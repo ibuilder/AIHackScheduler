@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for
 from flask_login import login_required, current_user
-from models import Project, Task, Company
+from models import Project, Task, Company, TaskStatus, UserRole
 from extensions import db
 
 main_bp = Blueprint('main', __name__)
@@ -15,7 +15,7 @@ def index():
 @login_required
 def dashboard():
     # Get user's projects
-    if current_user.role.name == 'ADMIN':
+    if current_user.role == UserRole.ADMIN:
         projects = Project.query.filter_by(company_id=current_user.company_id).limit(5).all()
     else:
         projects = Project.query.filter_by(
@@ -32,7 +32,7 @@ def dashboard():
     total_projects = Project.query.filter_by(company_id=current_user.company_id).count()
     active_tasks = Task.query.join(Project).filter(
         Project.company_id == current_user.company_id,
-        Task.status.in_(['not_started', 'in_progress'])
+        Task.status.in_([TaskStatus.NOT_STARTED, TaskStatus.IN_PROGRESS])
     ).count()
     
     return render_template('reports/dashboard.html',
