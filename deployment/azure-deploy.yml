@@ -1,0 +1,204 @@
+# Azure Container Apps Deployment Configuration
+# Deploy BBSchedule Platform to Azure with full enterprise features
+
+apiVersion: 2023-05-01
+location: eastus
+resourceGroup: bbschedule-prod-rg
+
+# Azure Container Apps Environment
+environment:
+  name: bbschedule-env
+  location: eastus
+  properties:
+    daprAIInstrumentationKey: "${APPINSIGHTS_INSTRUMENTATION_KEY}"
+    appLogsConfiguration:
+      destination: log-analytics
+      logAnalyticsConfiguration:
+        customerId: "${LOG_ANALYTICS_WORKSPACE_ID}"
+
+# Main Application Container
+applications:
+  - name: bbschedule-app
+    properties:
+      managedEnvironmentId: "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/bbschedule-prod-rg/providers/Microsoft.App/managedEnvironments/bbschedule-env"
+      configuration:
+        ingress:
+          external: true
+          targetPort: 5000
+          traffic:
+            - weight: 100
+              latestRevision: true
+        dapr:
+          enabled: false
+        secrets:
+          - name: session-secret
+            value: "${SESSION_SECRET}"
+          - name: db-password
+            value: "${DATABASE_PASSWORD}"
+          - name: powerbi-client-secret
+            value: "${POWERBI_CLIENT_SECRET}"
+          - name: redis-password
+            value: "${REDIS_PASSWORD}"
+        registries:
+          - server: "${ACR_NAME}.azurecr.io"
+            username: "${ACR_USERNAME}"
+            passwordSecretRef: "acr-password"
+      template:
+        containers:
+          - name: bbschedule
+            image: "${ACR_NAME}.azurecr.io/bbschedule:latest"
+            env:
+              - name: FLASK_ENV
+                value: "production"
+              - name: DATABASE_URL
+                value: "postgresql://bbschedule@${DB_SERVER_NAME}:${DB_PASSWORD}@${DB_SERVER_NAME}.postgres.database.azure.com:5432/bbschedule?sslmode=require"
+              - name: REDIS_URL
+                value: "rediss://:${REDIS_PASSWORD}@${REDIS_CACHE_NAME}.redis.cache.windows.net:6380"
+              - name: SESSION_SECRET
+                secretRef: "session-secret"
+              - name: POWERBI_CLIENT_ID
+                value: "${POWERBI_CLIENT_ID}"
+              - name: POWERBI_CLIENT_SECRET
+                secretRef: "powerbi-client-secret"
+              - name: POWERBI_TENANT_ID
+                value: "${POWERBI_TENANT_ID}"
+              - name: APPINSIGHTS_INSTRUMENTATION_KEY
+                value: "${APPINSIGHTS_INSTRUMENTATION_KEY}"
+            resources:
+              cpu: 1.0
+              memory: "2Gi"
+            probes:
+              - type: Liveness
+                httpGet:
+                  path: "/health/health/liveness"
+                  port: 5000
+                initialDelaySeconds: 30
+                periodSeconds: 10
+              - type: Readiness
+                httpGet:
+                  path: "/health/health/readiness"
+                  port: 5000
+                initialDelaySeconds: 10
+                periodSeconds: 5
+        scale:
+          minReplicas: 2
+          maxReplicas: 10
+          rules:
+            - name: "http-scaler"
+              http:
+                metadata:
+                  concurrentRequests: "50"
+
+# Background Worker Container
+  - name: bbschedule-worker
+    properties:
+      managedEnvironmentId: "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/bbschedule-prod-rg/providers/Microsoft.App/managedEnvironments/bbschedule-env"
+      configuration:
+        dapr:
+          enabled: false
+        secrets:
+          - name: session-secret
+            value: "${SESSION_SECRET}"
+          - name: db-password
+            value: "${DATABASE_PASSWORD}"
+        registries:
+          - server: "${ACR_NAME}.azurecr.io"
+            username: "${ACR_USERNAME}"
+            passwordSecretRef: "acr-password"
+      template:
+        containers:
+          - name: bbschedule-worker
+            image: "${ACR_NAME}.azurecr.io/bbschedule:latest"
+            command: ["celery"]
+            args: ["-A", "app.celery", "worker", "--loglevel=info"]
+            env:
+              - name: FLASK_ENV
+                value: "production"
+              - name: DATABASE_URL
+                value: "postgresql://bbschedule@${DB_SERVER_NAME}:${DB_PASSWORD}@${DB_SERVER_NAME}.postgres.database.azure.com:5432/bbschedule?sslmode=require"
+              - name: REDIS_URL
+                value: "rediss://:${REDIS_PASSWORD}@${REDIS_CACHE_NAME}.redis.cache.windows.net:6380"
+              - name: SESSION_SECRET
+                secretRef: "session-secret"
+            resources:
+              cpu: 0.5
+              memory: "1Gi"
+        scale:
+          minReplicas: 1
+          maxReplicas: 5
+
+# Azure Database for PostgreSQL
+database:
+  type: "Microsoft.DBforPostgreSQL/flexibleServers"
+  apiVersion: "2022-12-01"
+  properties:
+    administratorLogin: "bbschedule"
+    administratorLoginPassword: "${DATABASE_PASSWORD}"
+    version: "15"
+    storage:
+      storageSizeGB: 128
+      autoGrow: "Enabled"
+    sku:
+      name: "Standard_B2s"
+      tier: "Burstable"
+    highAvailability:
+      mode: "Disabled"
+    backup:
+      backupRetentionDays: 7
+      geoRedundantBackup: "Disabled"
+
+# Azure Cache for Redis
+redis:
+  type: "Microsoft.Cache/Redis"
+  apiVersion: "2023-04-01"
+  properties:
+    sku:
+      name: "Standard"
+      family: "C"
+      capacity: 1
+    enableNonSslPort: false
+    minimumTlsVersion: "1.2"
+    redisConfiguration:
+      "maxmemory-policy": "allkeys-lru"
+
+# Application Insights
+appInsights:
+  type: "Microsoft.Insights/components"
+  apiVersion: "2020-02-02"
+  properties:
+    Application_Type: "web"
+    Request_Source: "rest"
+
+# Custom Domain and SSL
+customDomain:
+  name: "bbschedule.yourdomain.com"
+  certificateType: "ManagedCertificate"
+  bindingType: "SniEnabled"
+
+# Monitoring and Alerting
+alerts:
+  - name: "High CPU Usage"
+    condition: "cpu > 80"
+    action: "scale out"
+  - name: "High Memory Usage"  
+    condition: "memory > 85"
+    action: "alert admin"
+  - name: "Application Errors"
+    condition: "error rate > 5%"
+    action: "alert admin"
+
+# Auto-scaling Rules
+autoScale:
+  minInstances: 2
+  maxInstances: 10
+  rules:
+    - metricName: "Requests"
+      operator: "GreaterThan"
+      threshold: 1000
+      scaleAction: "Increase"
+      cooldown: "PT5M"
+    - metricName: "CPU"
+      operator: "GreaterThan"
+      threshold: 70
+      scaleAction: "Increase"
+      cooldown: "PT5M"

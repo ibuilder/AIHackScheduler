@@ -147,6 +147,8 @@ def create_app(config_class=None):
     from blueprints.powerbi_integration import powerbi_bp
     from blueprints.reports import reports_bp
     from blueprints.admin import admin_bp
+    from analytics.advanced_analytics import analytics_bp
+    from admin.user_management import admin_bp as user_mgmt_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(projects_bp, url_prefix='/projects')
@@ -156,6 +158,8 @@ def create_app(config_class=None):
     app.register_blueprint(powerbi_bp, url_prefix='/api/powerbi')
     app.register_blueprint(reports_bp, url_prefix='/reports')
     app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
+    app.register_blueprint(user_mgmt_bp, url_prefix='/management')
     
     # Register main routes
     from routes import main_bp

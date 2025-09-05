@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- User Management Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-users me-2"></i>
+                        User Management
+                    </h1>
+                    <p class="text-muted mb-0">Manage company users and permissions</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('admin.create_user') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Add User
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Statistics -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="h3 mb-0">{{ users|length }}</div>
+                    <small class="text-muted">Total Users</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="h3 mb-0">{{ users|selectattr('is_active', 'equalto', true)|list|length }}</div>
+                    <small class="text-muted">Active Users</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="h3 mb-0">{{ users|selectattr('role.name', 'equalto', 'ADMIN')|list|length }}</div>
+                    <small class="text-muted">Administrators</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="h3 mb-0">{{ users|selectattr('role.name', 'equalto', 'PROJECT_MANAGER')|list|length }}</div>
+                    <small class="text-muted">Project Managers</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-list me-2"></i>Company Users
+                        </h6>
+                        <div class="d-flex gap-2">
+                            <input type="text" class="form-control form-control-sm" id="userSearch" placeholder="Search users..." style="width: 200px;">
+                            <select class="form-select form-select-sm" id="roleFilter" style="width: 150px;">
+                                <option value="">All Roles</option>
+                                <option value="ADMIN">Admin</option>
+                                <option value="PROJECT_MANAGER">Project Manager</option>
+                                <option value="SCHEDULER">Scheduler</option>
+                                <option value="FIELD_SUPERVISOR">Field Supervisor</option>
+                                <option value="VIEWER">Viewer</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="usersTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>User</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Last Login</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr data-user-id="{{ user.id }}" class="user-row">
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar me-3">
+                                                <div class="avatar-initial rounded-circle bg-primary">
+                                                    {{ user.first_name[0] }}{{ user.last_name[0] }}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div class="fw-medium">{{ user.first_name }} {{ user.last_name }}</div>
+                                                <small class="text-muted">{{ user.username }} • {{ user.email }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'danger' if user.role.name == 'ADMIN' else 'primary' if user.role.name == 'PROJECT_MANAGER' else 'success' if user.role.name == 'SCHEDULER' else 'warning' if user.role.name == 'FIELD_SUPERVISOR' else 'secondary' }}">
+                                            {{ user.role.name.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if user.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user.last_login %}
+                                            {{ user.last_login.strftime('%Y-%m-%d %H:%M') }}
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {{ user.created_at.strftime('%Y-%m-%d') }}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-outline-primary" title="Edit User">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                            {% if user.id != current_user.id %}
+                                                {% if user.is_active %}
+                                                    <button class="btn btn-outline-warning deactivate-user" data-user-id="{{ user.id }}" data-username="{{ user.username }}" title="Deactivate User">
+                                                        <i class="fas fa-pause"></i>
+                                                    </button>
+                                                {% else %}
+                                                    <button class="btn btn-outline-success activate-user" data-user-id="{{ user.id }}" data-username="{{ user.username }}" title="Activate User">
+                                                        <i class="fas fa-play"></i>
+                                                    </button>
+                                                {% endif %}
+                                            {% endif %}
+                                            <button class="btn btn-outline-info view-activity" data-user-id="{{ user.id }}" title="View Activity">
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Activity Modal -->
+<div class="modal fade" id="activityModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">User Activity</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="activityContent">
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Search functionality
+    document.getElementById('userSearch').addEventListener('input', filterUsers);
+    document.getElementById('roleFilter').addEventListener('change', filterUsers);
+    
+    // User action handlers
+    document.querySelectorAll('.deactivate-user').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            const username = this.dataset.username;
+            
+            if (confirm(`Are you sure you want to deactivate user "${username}"?`)) {
+                toggleUserStatus(userId, false);
+            }
+        });
+    });
+    
+    document.querySelectorAll('.activate-user').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            const username = this.dataset.username;
+            
+            if (confirm(`Are you sure you want to activate user "${username}"?`)) {
+                toggleUserStatus(userId, true);
+            }
+        });
+    });
+    
+    document.querySelectorAll('.view-activity').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            viewUserActivity(userId);
+        });
+    });
+});
+
+function filterUsers() {
+    const searchTerm = document.getElementById('userSearch').value.toLowerCase();
+    const roleFilter = document.getElementById('roleFilter').value;
+    
+    document.querySelectorAll('.user-row').forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const roleSpan = row.querySelector('.badge');
+        const userRole = roleSpan ? roleSpan.textContent.trim().toUpperCase().replace(' ', '_') : '';
+        
+        const matchesSearch = text.includes(searchTerm);
+        const matchesRole = !roleFilter || userRole === roleFilter;
+        
+        row.style.display = (matchesSearch && matchesRole) ? '' : 'none';
+    });
+}
+
+async function toggleUserStatus(userId, activate) {
+    try {
+        const endpoint = activate ? 'activate' : 'deactivate';
+        const response = await fetch(`/management/users/${userId}/${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert(result.message, 'success');
+            // Reload page to update status
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert(result.error || 'Operation failed', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Status toggle error:', error);
+        showAlert('Network error. Please try again.', 'error');
+    }
+}
+
+async function viewUserActivity(userId) {
+    const modal = new bootstrap.Modal(document.getElementById('activityModal'));
+    modal.show();
+    
+    try {
+        // In a real implementation, this would fetch from an audit endpoint
+        document.getElementById('activityContent').innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                User activity tracking is available in the full enterprise version.
+                This would show login history, project activities, and system interactions.
+            </div>
+            <div class="list-group">
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>Login</strong>
+                        <small>2 hours ago</small>
+                    </div>
+                    <small class="text-muted">Successful login from 192.168.1.100</small>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>Project Created</strong>
+                        <small>1 day ago</small>
+                    </div>
+                    <small class="text-muted">Created project "Office Complex Phase 2"</small>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>Task Updated</strong>
+                        <small>2 days ago</small>
+                    </div>
+                    <small class="text-muted">Updated task status to "In Progress"</small>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Activity fetch error:', error);
+        document.getElementById('activityContent').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Failed to load user activity. Please try again.
+            </div>
+        `;
+    }
+}
+
+function showAlert(message, type) {
+    // Create and show Bootstrap alert
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Add to page
+    const container = document.querySelector('.container-fluid');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+function getCSRFToken() {
+    const token = document.querySelector('meta[name=csrf-token]');
+    return token ? token.getAttribute('content') : '';
+}
+</script>
+
+<style>
+.avatar {
+    width: 40px;
+    height: 40px;
+}
+
+.avatar-initial {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: white;
+}
+
+.user-row:hover {
+    background-color: rgba(0,0,0,0.02);
+}
+
+.btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+}
+</style>
+{% endblock %}
