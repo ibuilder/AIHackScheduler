@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0">
+            <i class="fas fa-project-diagram me-2"></i>
+            Projects
+        </h2>
+        <p class="text-muted mb-0">Manage your construction projects</p>
+    </div>
+    <div>
+        <a href="{{ url_for('projects.create_project') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>New Project
+        </a>
+    </div>
+</div>
+
+<!-- Projects Grid -->
+{% if projects %}
+<div class="row g-4">
+    {% for project in projects %}
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 project-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="card-title mb-0">{{ project.name }}</h6>
+                <span class="badge badge-status badge-{{ project.status }}">{{ project.status.title() }}</span>
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted">{{ project.description or 'No description provided' }}</p>
+                
+                <div class="mb-3">
+                    <small class="text-muted d-block">Project Number:</small>
+                    <strong>{{ project.project_number or 'N/A' }}</strong>
+                </div>
+                
+                <div class="mb-3">
+                    <small class="text-muted d-block">Location:</small>
+                    <strong>{{ project.location or 'N/A' }}</strong>
+                </div>
+                
+                <div class="row text-center">
+                    <div class="col-6">
+                        <small class="text-muted d-block">Start Date</small>
+                        <strong>{{ project.start_date.strftime('%m/%d/%Y') }}</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted d-block">End Date</small>
+                        <strong>{{ project.end_date.strftime('%m/%d/%Y') }}</strong>
+                    </div>
+                </div>
+                
+                {% if project.budget %}
+                <div class="mt-3 text-center">
+                    <small class="text-muted d-block">Budget</small>
+                    <strong class="text-success">${{ "{:,.0f}".format(project.budget) }}</strong>
+                </div>
+                {% endif %}
+                
+                <div class="mt-3">
+                    <small class="text-muted d-block">Schedule Type</small>
+                    <span class="badge bg-secondary">{{ project.schedule_type.name.replace('_', ' ').title() }}</span>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('projects.project_detail', project_id=project.id) }}" 
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-eye me-1"></i>View
+                    </a>
+                    <div class="btn-group">
+                        <a href="{{ url_for('scheduling.gantt_view', project_id=project.id) }}" 
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-chart-gantt me-1"></i>Gantt
+                        </a>
+                        <a href="{{ url_for('scheduling.linear_view', project_id=project.id) }}" 
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-route me-1"></i>Linear
+                        </a>
+                        <a href="{{ url_for('scheduling.pull_planning_view', project_id=project.id) }}" 
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-tasks me-1"></i>Pull
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination (if needed) -->
+{% if projects|length >= 12 %}
+<nav aria-label="Projects pagination" class="mt-4">
+    <ul class="pagination justify-content-center">
+        <li class="page-item disabled">
+            <a class="page-link" href="#" tabindex="-1">Previous</a>
+        </li>
+        <li class="page-item active">
+            <a class="page-link" href="#">1</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="#">2</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="#">Next</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<!-- Empty State -->
+<div class="text-center py-5">
+    <i class="fas fa-project-diagram fa-4x text-muted mb-3"></i>
+    <h4 class="text-muted">No Projects Found</h4>
+    <p class="text-muted mb-4">Get started by creating your first construction project.</p>
+    <a href="{{ url_for('projects.create_project') }}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>Create Your First Project
+    </a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add hover effects to project cards
+    document.querySelectorAll('.project-card').forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-5px)';
+            this.style.transition = 'transform 0.3s ease';
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+        });
+    });
+});
+</script>
+{% endblock %}

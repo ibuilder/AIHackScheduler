@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<!-- Dashboard Header -->
+<div class="dashboard-header">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h1 class="display-6 fw-bold mb-2 text-white">
+                    <i class="fas fa-tachometer-alt me-3"></i>
+                    Project Dashboard
+                </h1>
+                <p class="lead mb-0 opacity-75">
+                    Welcome back, {{ current_user.first_name }}! Here's your construction project overview.
+                </p>
+            </div>
+            <div class="col-lg-4 text-end">
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-outline-light" id="refreshDashboard">
+                        <i class="fas fa-sync-alt me-2"></i>Refresh
+                    </button>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoRefreshToggle" checked>
+                        <label class="form-check-label text-white" for="autoRefreshToggle">Auto-refresh</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Key Metrics -->
+<div class="container">
+    <div class="row g-4 mb-4">
+        <div class="col-lg-3 col-md-6">
+            <div class="dashboard-stat" data-stat="projects">
+                <span class="stat-number" id="total-projects">{{ total_projects }}</span>
+                <span class="stat-label">Total Projects</span>
+                <div class="stat-icon">
+                    <i class="fas fa-project-diagram"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="dashboard-stat" data-stat="projects">
+                <span class="stat-number text-success" id="active-projects">{{ active_projects }}</span>
+                <span class="stat-label">Active Projects</span>
+                <div class="stat-icon">
+                    <i class="fas fa-play-circle"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="dashboard-stat" data-stat="tasks">
+                <span class="stat-number" id="total-tasks">{{ total_tasks }}</span>
+                <span class="stat-label">Total Tasks</span>
+                <div class="stat-icon">
+                    <i class="fas fa-tasks"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="dashboard-stat" data-stat="overdue">
+                <span class="stat-number text-danger" id="overdue-tasks">{{ overdue_tasks }}</span>
+                <span class="stat-label">Overdue Tasks</span>
+                <div class="stat-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">
+                        <i class="fas fa-bolt me-2"></i>Quick Actions
+                    </h6>
+                    <div class="row g-2">
+                        <div class="col-lg-3 col-md-6">
+                            <button class="btn btn-primary w-100" data-action="new-project">
+                                <i class="fas fa-plus me-2"></i>New Project
+                            </button>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <button class="btn btn-success w-100" data-action="azure-sync">
+                                <i class="fas fa-cloud me-2"></i>Azure Sync
+                            </button>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <button class="btn btn-info w-100" data-action="generate-report">
+                                <i class="fas fa-file-alt me-2"></i>Generate Report
+                            </button>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <button class="btn btn-warning w-100" data-action="optimize-schedule">
+                                <i class="fas fa-magic me-2"></i>AI Optimize
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row g-4 mb-4">
+        <!-- Project Progress Chart -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>Project Progress
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="projectProgressChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Status Distribution -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>Task Status Distribution
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="taskStatusChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Row Charts -->
+    <div class="row g-4 mb-4">
+        <!-- Schedule Performance -->
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-line me-2"></i>Schedule Performance (Last 30 Days)
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="schedulePerformanceChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Azure AI Insights -->
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-robot me-2"></i>Azure AI Risk Assessment
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="azureInsightsChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Tables Row -->
+    <div class="row g-4 mb-4">
+        <!-- Recent Projects -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-project-diagram me-2"></i>Recent Projects
+                    </h6>
+                    <a href="{{ url_for('projects.list_projects') }}" class="btn btn-sm btn-outline-primary">
+                        View All
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    {% if projects %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Project Name</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>End Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for project in projects %}
+                                <tr>
+                                    <td>
+                                        <div>
+                                            <strong>{{ project.name }}</strong>
+                                            {% if project.location %}
+                                            <br><small class="text-muted">{{ project.location }}</small>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-status badge-{{ project.status }}">
+                                            {{ project.status.title() }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress me-2" style="width: 80px; height: 6px;">
+                                                <div class="progress-bar" style="width: {{ project.progress_percentage or 0 }}%"></div>
+                                            </div>
+                                            <small>{{ (project.progress_percentage or 0)|round(0) }}%</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <small>{{ project.end_date.strftime('%m/%d/%Y') }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('projects.project_detail', project_id=project.id) }}" 
+                                               class="btn btn-outline-primary">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <a href="{{ url_for('scheduling.gantt_view', project_id=project.id) }}" 
+                                               class="btn btn-outline-secondary">
+                                                <i class="fas fa-chart-gantt"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-project-diagram fa-2x text-muted mb-2"></i>
+                        <p class="text-muted mb-0">No projects found. Create your first project to get started.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activities -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-history me-2"></i>Recent Activities
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="recent-activities">
+                        {% if recent_tasks %}
+                        {% for task in recent_tasks %}
+                        <div class="d-flex justify-content-between align-items-center py-3 px-3 border-bottom">
+                            <div>
+                                <div class="fw-bold">{{ task.name }}</div>
+                                <small class="text-muted">{{ task.project.name }}</small>
+                                <br><small class="text-muted">{{ task.updated_at.strftime('%m/%d/%Y %I:%M %p') }}</small>
+                            </div>
+                            <span class="badge badge-status badge-{{ task.status.name.lower().replace('_', '-') }}">
+                                {{ task.status.name.replace('_', ' ').title() }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-history fa-2x text-muted mb-2"></i>
+                            <p class="text-muted mb-0">No recent activities</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Azure Services Status -->
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-cloud me-2"></i>Azure Services Integration Status
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-lg-4">
+                            <div class="azure-service-card">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-robot fa-2x text-primary me-3"></i>
+                                        <div>
+                                            <h6 class="mb-0">Azure AI</h6>
+                                            <small class="text-muted">Schedule Optimization</small>
+                                        </div>
+                                    </div>
+                                    <span class="service-status connected">Connected</span>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">Last sync: 2 minutes ago</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-4">
+                            <div class="azure-service-card">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-database fa-2x text-success me-3"></i>
+                                        <div>
+                                            <h6 class="mb-0">Microsoft Fabric</h6>
+                                            <small class="text-muted">Data Lake Integration</small>
+                                        </div>
+                                    </div>
+                                    <span class="service-status connected">Connected</span>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">Last sync: 5 minutes ago</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-4">
+                            <div class="azure-service-card">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <i class="fas fa-brain fa-2x text-warning me-3"></i>
+                                        <div>
+                                            <h6 class="mb-0">Azure Foundry</h6>
+                                            <small class="text-muted">ML Analytics</small>
+                                        </div>
+                                    </div>
+                                    <span class="service-status connected">Connected</span>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">Last sync: 1 minute ago</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Pass dashboard data to JavaScript
+window.dashboardData = {
+    project_progress: {{ project_progress|tojson }},
+    status_distribution: {{ status_distribution|tojson }},
+    total_projects: {{ total_projects }},
+    active_projects: {{ active_projects }},
+    total_tasks: {{ total_tasks }},
+    completed_tasks: {{ completed_tasks }},
+    overdue_tasks: {{ overdue_tasks }}
+};
+</script>
+{% endblock %}
+
+<style>
+.dashboard-stat {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.dashboard-stat:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+}
+
+.dashboard-stat .stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--bb-primary);
+    display: block;
+    line-height: 1;
+}
+
+.dashboard-stat .stat-label {
+    font-size: 0.9rem;
+    color: var(--bb-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 0.5rem;
+    display: block;
+}
+
+.dashboard-stat .stat-icon {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    color: var(--bb-primary);
+    opacity: 0.3;
+}
+
+.azure-service-card {
+    background: white;
+    border: 1px solid var(--bb-border);
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+}
+
+.azure-service-card:hover {
+    border-color: var(--bb-primary);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.service-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.service-status.connected {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: var(--bb-success);
+}
+
+.service-status.disconnected {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--bb-danger);
+}
+
+.service-status.syncing {
+    background-color: rgba(247, 147, 30, 0.1);
+    color: var(--bb-accent);
+}
+
+/* Chart containers */
+canvas {
+    max-height: 300px !important;
+}
+
+/* Progress bars in tables */
+.progress {
+    height: 6px;
+    border-radius: 3px;
+    background-color: rgba(0,0,0,0.1);
+}
+
+.progress-bar {
+    border-radius: 3px;
+}
+
+/* Recent activities styling */
+#recent-activities .border-bottom:last-child {
+    border-bottom: none !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .dashboard-stat {
+        margin-bottom: 1rem;
+        padding: 1.5rem 1rem;
+    }
+    
+    .dashboard-stat .stat-number {
+        font-size: 2rem;
+    }
+    
+    .dashboard-stat .stat-icon {
+        display: none;
+    }
+    
+    .azure-service-card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Animation for stat updates */
+.stat-number {
+    transition: all 0.5s ease;
+}
+
+.stat-number.updated {
+    animation: statPulse 0.6s ease;
+}
+
+@keyframes statPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* Loading states */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+}
+
+.card {
+    position: relative;
+}
+
+.card.loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    z-index: 10;
+}
+</style>
+{% endblock %}

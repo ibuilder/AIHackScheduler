@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Create Project - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-plus-circle me-2"></i>
+                    Create New Project
+                </h4>
+                <p class="text-muted mb-0 mt-2">Set up a new construction project with scheduling parameters</p>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Project Name *</label>
+                                <input type="text" class="form-control" id="name" name="name" required
+                                       placeholder="e.g., Downtown Office Complex Phase 1">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="project_number" class="form-label">Project Number</label>
+                                <input type="text" class="form-control" id="project_number" name="project_number"
+                                       placeholder="e.g., BB-2024-001">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"
+                                  placeholder="Brief description of the project scope and objectives"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="start_date" class="form-label">Start Date *</label>
+                                <input type="date" class="form-control" id="start_date" name="start_date" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="end_date" class="form-label">End Date *</label>
+                                <input type="date" class="form-control" id="end_date" name="end_date" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="budget" class="form-label">Budget ($)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="budget" name="budget" 
+                                           step="0.01" placeholder="0.00">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="schedule_type" class="form-label">Schedule Type *</label>
+                                <select class="form-control" id="schedule_type" name="schedule_type" required>
+                                    <option value="">Select schedule type...</option>
+                                    <option value="gantt">Gantt Chart</option>
+                                    <option value="linear">Linear Schedule</option>
+                                    <option value="pull_planning">Pull Planning</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="location" class="form-label">Project Location</label>
+                        <input type="text" class="form-control" id="location" name="location"
+                               placeholder="e.g., 123 Main Street, Charlotte, NC 28202">
+                    </div>
+                    
+                    <!-- Schedule Type Information -->
+                    <div class="mt-4">
+                        <h6 class="fw-bold">Schedule Type Information</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="schedule-type-info" data-type="gantt">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="fas fa-chart-gantt fa-2x text-primary me-3"></i>
+                                        <div>
+                                            <h6 class="mb-0">Gantt Chart</h6>
+                                            <small class="text-muted">Traditional project scheduling</small>
+                                        </div>
+                                    </div>
+                                    <p class="small mb-0">
+                                        Best for complex projects with multiple dependencies and milestones.
+                                        Provides critical path analysis and resource allocation views.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="schedule-type-info" data-type="linear">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="fas fa-route fa-2x text-success me-3"></i>
+                                        <div>
+                                            <h6 class="mb-0">Linear Schedule</h6>
+                                            <small class="text-muted">Location-based scheduling</small>
+                                        </div>
+                                    </div>
+                                    <p class="small mb-0">
+                                        Perfect for linear projects like roads, pipelines, or railways.
+                                        Shows time-distance relationships and production rates.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="schedule-type-info" data-type="pull_planning">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <i class="fas fa-tasks fa-2x text-warning me-3"></i>
+                                        <div>
+                                            <h6 class="mb-0">Pull Planning</h6>
+                                            <small class="text-muted">Lean construction method</small>
+                                        </div>
+                                    </div>
+                                    <p class="small mb-0">
+                                        Collaborative approach for lean construction with weekly planning boards.
+                                        Focuses on constraint identification and removal.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{{ url_for('projects.list_projects') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Create Project
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const scheduleTypeSelect = document.getElementById('schedule_type');
+    const scheduleTypeInfos = document.querySelectorAll('.schedule-type-info');
+    
+    // Set minimum start date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('start_date').min = today;
+    
+    // Update end date minimum when start date changes
+    document.getElementById('start_date').addEventListener('change', function() {
+        document.getElementById('end_date').min = this.value;
+    });
+    
+    // Highlight selected schedule type
+    scheduleTypeSelect.addEventListener('change', function() {
+        scheduleTypeInfos.forEach(info => {
+            info.classList.remove('border', 'border-primary', 'bg-light');
+        });
+        
+        if (this.value) {
+            const selectedInfo = document.querySelector(`[data-type="${this.value}"]`);
+            if (selectedInfo) {
+                selectedInfo.classList.add('border', 'border-primary', 'bg-light');
+            }
+        }
+    });
+    
+    // Form validation
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const startDate = new Date(document.getElementById('start_date').value);
+        const endDate = new Date(document.getElementById('end_date').value);
+        
+        if (endDate <= startDate) {
+            e.preventDefault();
+            alert('End date must be after start date.');
+            return false;
+        }
+    });
+});
+</script>
+{% endblock %}

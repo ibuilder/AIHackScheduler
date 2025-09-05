@@ -1,0 +1,630 @@
+{% extends "base.html" %}
+
+{% block title %}Linear Schedule - {{ project.name }} - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('projects.list_projects') }}">Projects</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('projects.project_detail', project_id=project.id) }}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">Linear Schedule</li>
+            </ol>
+        </nav>
+        <h2 class="fw-bold mb-0">
+            <i class="fas fa-route me-2"></i>
+            Linear Schedule - {{ project.name }}
+        </h2>
+        <p class="text-muted mb-0">Time-Distance diagram for location-based scheduling</p>
+    </div>
+    <div class="btn-group">
+        <a href="{{ url_for('scheduling.gantt_view', project_id=project.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-chart-gantt me-2"></i>Gantt View
+        </a>
+        <a href="{{ url_for('scheduling.pull_planning_view', project_id=project.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-tasks me-2"></i>Pull Planning
+        </a>
+        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="fas fa-cog me-2"></i>Actions
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="linearSchedule.exportAsPNG()">
+                <i class="fas fa-download me-2"></i>Export as PNG
+            </a></li>
+            <li><a class="dropdown-item" href="#" onclick="analyzeProductionRates()">
+                <i class="fas fa-chart-line me-2"></i>Analyze Production Rates
+            </a></li>
+            <li><a class="dropdown-item" href="#" onclick="addLinearTask()">
+                <i class="fas fa-plus me-2"></i>Add Linear Task
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('reports.project_report', project_id=project.id) }}">
+                <i class="fas fa-chart-bar me-2"></i>Project Report
+            </a></li>
+        </ul>
+    </div>
+</div>
+
+<!-- Linear Schedule Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-primary mb-0">{{ tasks|length }}</h5>
+                <small class="text-muted">Linear Activities</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-info mb-0">{{ unique_locations|length if unique_locations else 0 }}</h5>
+                <small class="text-muted">Locations</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-success mb-0">{{ avg_production_rate|round(2) if avg_production_rate else 0 }}</h5>
+                <small class="text-muted">Avg Rate (units/day)</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-warning mb-0">{{ total_distance|round(1) if total_distance else 0 }}</h5>
+                <small class="text-muted">Total Distance</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Linear Schedule Controls -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center flex-wrap">
+                    <label class="form-label me-3 mb-0">Location Unit:</label>
+                    <select class="form-select form-select-sm me-3" id="locationUnit" style="width: auto;">
+                        <option value="station">Station</option>
+                        <option value="chainage">Chainage</option>
+                        <option value="mile">Mile</option>
+                        <option value="kilometer">Kilometer</option>
+                        <option value="floor">Floor</option>
+                    </select>
+                    
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showProductionRates" checked>
+                        <label class="form-check-label" for="showProductionRates">Production Rates</label>
+                    </div>
+                    
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showBuffers">
+                        <label class="form-check-label" for="showBuffers">Buffer Zones</label>
+                    </div>
+                    
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="showInterference">
+                        <label class="form-check-label" for="showInterference">Interference Analysis</label>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary" onclick="zoomOut()">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="zoomIn()">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="resetView()">
+                        <i class="fas fa-home"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Linear Schedule Chart Container -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0">
+            <i class="fas fa-chart-line me-2"></i>
+            Time-Distance Diagram
+        </h6>
+        <div class="d-flex align-items-center">
+            <small class="text-muted me-3">
+                Time: {{ project.start_date.strftime('%B %d, %Y') }} - {{ project.end_date.strftime('%B %d, %Y') }}
+            </small>
+            {% if tasks %}
+            <small class="text-muted">
+                Location: {{ min_location|round(1) }} - {{ max_location|round(1) }} 
+                <span id="locationUnitLabel">stations</span>
+            </small>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="linear-schedule-container">
+            <div id="linear-schedule-container"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Activity Details Panel (shown when activity is selected) -->
+<div id="activity-details" class="mt-4" style="display: none;">
+    <!-- Content will be populated by JavaScript -->
+</div>
+
+<!-- Linear Task Modal -->
+<div class="modal fade" id="linearTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Linear Activity</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="linearTaskForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Activity Name *</label>
+                                <input type="text" class="form-control" name="name" required
+                                       placeholder="e.g., Excavation, Paving, Utilities">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Duration (days) *</label>
+                                <input type="number" class="form-control" name="duration" min="1" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Start Date *</label>
+                                <input type="date" class="form-control" name="start_date" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">End Date *</label>
+                                <input type="date" class="form-control" name="end_date" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Start Location *</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="station_start" 
+                                           step="0.1" required placeholder="0.0">
+                                    <span class="input-group-text" id="startLocationUnit">stations</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">End Location *</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="station_end" 
+                                           step="0.1" required placeholder="100.0">
+                                    <span class="input-group-text" id="endLocationUnit">stations</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Location Description</label>
+                        <input type="text" class="form-control" name="location" 
+                               placeholder="e.g., Main Street from 1st Ave to 5th Ave">
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Production Rate:</strong> Will be automatically calculated based on distance and duration.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="saveLinearTask()">
+                    <i class="fas fa-save me-2"></i>Add Activity
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/linear-schedule.js') }}"></script>
+<script>
+// Pass data to JavaScript
+window.linearTasksData = {{ tasks|tojson }};
+window.projectId = {{ project.id }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Linear Schedule
+    if (window.linearTasksData && window.linearTasksData.length > 0) {
+        window.linearSchedule = new LinearSchedule('linear-schedule-container', {
+            height: 600,
+            locationLabel: 'Station'
+        });
+        
+        window.linearSchedule.setData(window.linearTasksData);
+    } else {
+        showEmptyLinearState();
+    }
+    
+    // Setup event listeners
+    setupLinearControls();
+});
+
+function setupLinearControls() {
+    // Location unit change
+    document.getElementById('locationUnit').addEventListener('change', function() {
+        updateLocationUnit(this.value);
+    });
+    
+    // Production rates toggle
+    document.getElementById('showProductionRates').addEventListener('change', function() {
+        toggleProductionRates(this.checked);
+    });
+    
+    // Buffer zones toggle
+    document.getElementById('showBuffers').addEventListener('change', function() {
+        toggleBuffers(this.checked);
+    });
+    
+    // Interference analysis toggle
+    document.getElementById('showInterference').addEventListener('change', function() {
+        toggleInterference(this.checked);
+    });
+    
+    // Form date validation
+    const startDateInput = document.querySelector('[name="start_date"]');
+    const endDateInput = document.querySelector('[name="end_date"]');
+    
+    if (startDateInput && endDateInput) {
+        startDateInput.addEventListener('change', function() {
+            endDateInput.min = this.value;
+            calculateDuration();
+        });
+        
+        endDateInput.addEventListener('change', calculateDuration);
+    }
+}
+
+function updateLocationUnit(unit) {
+    // Update labels
+    document.getElementById('locationUnitLabel').textContent = unit + 's';
+    document.getElementById('startLocationUnit').textContent = unit + 's';
+    document.getElementById('endLocationUnit').textContent = unit + 's';
+    
+    // Update chart
+    if (window.linearSchedule) {
+        window.linearSchedule.options.locationLabel = unit.charAt(0).toUpperCase() + unit.slice(1);
+        window.linearSchedule.render();
+    }
+}
+
+function toggleProductionRates(show) {
+    // Implementation to toggle production rates display
+    console.log('Toggle production rates:', show);
+}
+
+function toggleBuffers(show) {
+    // Implementation to toggle buffer zones
+    console.log('Toggle buffers:', show);
+}
+
+function toggleInterference(show) {
+    // Implementation to toggle interference analysis
+    console.log('Toggle interference:', show);
+}
+
+function zoomIn() {
+    // Implementation for zoom in
+    console.log('Zoom in');
+}
+
+function zoomOut() {
+    // Implementation for zoom out
+    console.log('Zoom out');
+}
+
+function resetView() {
+    // Implementation to reset view
+    if (window.linearSchedule) {
+        window.linearSchedule.render();
+    }
+}
+
+function addLinearTask() {
+    const modal = new bootstrap.Modal(document.getElementById('linearTaskModal'));
+    modal.show();
+}
+
+function saveLinearTask() {
+    const form = document.getElementById('linearTaskForm');
+    const formData = new FormData(form);
+    
+    const taskData = {
+        name: formData.get('name'),
+        duration: parseInt(formData.get('duration')),
+        start_date: formData.get('start_date'),
+        end_date: formData.get('end_date'),
+        station_start: parseFloat(formData.get('station_start')),
+        station_end: parseFloat(formData.get('station_end')),
+        location: formData.get('location')
+    };
+    
+    // Validate data
+    if (new Date(taskData.end_date) <= new Date(taskData.start_date)) {
+        alert('End date must be after start date');
+        return;
+    }
+    
+    if (taskData.station_end <= taskData.station_start) {
+        alert('End location must be greater than start location');
+        return;
+    }
+    
+    // Send to server
+    fetch(`/projects/${window.projectId}/tasks/create`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify(taskData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error creating task: ' + data.error);
+        } else {
+            // Add task to chart
+            if (window.linearSchedule) {
+                window.linearSchedule.addTask({
+                    id: data.id,
+                    name: data.name,
+                    start_date: taskData.start_date,
+                    end_date: taskData.end_date,
+                    station_start: taskData.station_start,
+                    station_end: taskData.station_end,
+                    location: taskData.location,
+                    status: 'not_started',
+                    progress: 0
+                });
+            }
+            
+            // Close modal
+            bootstrap.Modal.getInstance(document.getElementById('linearTaskModal')).hide();
+            
+            // Reset form
+            form.reset();
+            
+            showAlert('Linear activity added successfully', 'success');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to create task');
+    });
+}
+
+function calculateDuration() {
+    const startDate = document.querySelector('[name="start_date"]').value;
+    const endDate = document.querySelector('[name="end_date"]').value;
+    
+    if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        document.querySelector('[name="duration"]').value = diffDays;
+    }
+}
+
+function analyzeProductionRates() {
+    if (!window.linearTasksData || window.linearTasksData.length === 0) {
+        alert('No linear activities to analyze');
+        return;
+    }
+    
+    // Calculate production rates for all activities
+    const analysisData = window.linearTasksData.map(task => {
+        const distance = Math.abs(task.station_end - task.station_start);
+        const timeSpan = (new Date(task.end_date) - new Date(task.start_date)) / (1000 * 60 * 60 * 24);
+        const rate = distance / timeSpan;
+        
+        return {
+            name: task.name,
+            distance: distance,
+            duration: timeSpan,
+            rate: rate,
+            location: task.location
+        };
+    });
+    
+    // Show analysis modal
+    showProductionAnalysis(analysisData);
+}
+
+function showProductionAnalysis(data) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-chart-line me-2"></i>Production Rate Analysis
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Activity</th>
+                                    <th>Distance</th>
+                                    <th>Duration</th>
+                                    <th>Production Rate</th>
+                                    <th>Location</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.map(item => `
+                                    <tr>
+                                        <td><strong>${item.name}</strong></td>
+                                        <td>${item.distance.toFixed(1)} units</td>
+                                        <td>${item.duration.toFixed(1)} days</td>
+                                        <td><strong>${item.rate.toFixed(2)} units/day</strong></td>
+                                        <td>${item.location || 'N/A'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="text-primary">${Math.max(...data.map(d => d.rate)).toFixed(2)}</h5>
+                                    <small>Fastest Rate (units/day)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="text-warning">${(data.reduce((sum, d) => sum + d.rate, 0) / data.length).toFixed(2)}</h5>
+                                    <small>Average Rate (units/day)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h5 class="text-danger">${Math.min(...data.map(d => d.rate)).toFixed(2)}</h5>
+                                    <small>Slowest Rate (units/day)</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bootstrapModal = new bootstrap.Modal(modal);
+    bootstrapModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(modal);
+    });
+}
+
+function showEmptyLinearState() {
+    document.getElementById('linear-schedule-container').innerHTML = `
+        <div class="text-center py-5">
+            <i class="fas fa-route fa-4x text-muted mb-3"></i>
+            <h5>No Linear Activities</h5>
+            <p class="text-muted">Add activities with location data to view the linear schedule.</p>
+            <button class="btn btn-primary" onclick="addLinearTask()">
+                <i class="fas fa-plus me-2"></i>Add Your First Linear Activity
+            </button>
+        </div>
+    `;
+}
+
+function showAlert(message, type = 'info') {
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'success' ? 'alert-success' : 
+                      type === 'warning' ? 'alert-warning' : 'alert-info';
+    
+    const alert = document.createElement('div');
+    alert.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+    alert.style.top = '20px';
+    alert.style.right = '20px';
+    alert.style.zIndex = '9999';
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alert);
+    
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+
+<style>
+.linear-schedule-container {
+    overflow-x: auto;
+    min-height: 600px;
+}
+
+/* Custom styles for linear schedule elements */
+.linear-activity {
+    stroke-width: 3;
+    fill: none;
+}
+
+.linear-activity:hover {
+    stroke-width: 5;
+    cursor: pointer;
+}
+
+.activity-marker {
+    stroke-width: 2;
+    cursor: pointer;
+}
+
+.activity-marker:hover {
+    r: 6;
+}
+
+.production-rate {
+    font-size: 10px;
+    fill: #666;
+}
+
+.current-date-line {
+    stroke: #ff4444;
+    stroke-width: 2;
+    stroke-dasharray: 5,5;
+}
+
+.activity-label {
+    font-size: 11px;
+    font-weight: 600;
+    pointer-events: none;
+}
+</style>
+{% endblock %}

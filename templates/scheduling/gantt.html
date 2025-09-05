@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+
+{% block title %}Gantt Chart - {{ project.name }} - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('projects.list_projects') }}">Projects</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('projects.project_detail', project_id=project.id) }}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">Gantt Chart</li>
+            </ol>
+        </nav>
+        <h2 class="fw-bold mb-0">
+            <i class="fas fa-chart-gantt me-2"></i>
+            Gantt Chart - {{ project.name }}
+        </h2>
+    </div>
+    <div class="btn-group">
+        <a href="{{ url_for('scheduling.linear_view', project_id=project.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-route me-2"></i>Linear View
+        </a>
+        <a href="{{ url_for('scheduling.pull_planning_view', project_id=project.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-tasks me-2"></i>Pull Planning
+        </a>
+        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="fas fa-cog me-2"></i>Actions
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="ganttChart.exportAsPNG()">
+                <i class="fas fa-download me-2"></i>Export as PNG
+            </a></li>
+            <li><a class="dropdown-item" href="#" onclick="optimizeSchedule()">
+                <i class="fas fa-magic me-2"></i>AI Optimize
+            </a></li>
+            <li><a class="dropdown-item" href="#" onclick="addTask()">
+                <i class="fas fa-plus me-2"></i>Add Task
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('reports.project_report', project_id=project.id) }}">
+                <i class="fas fa-chart-bar me-2"></i>Project Report
+            </a></li>
+        </ul>
+    </div>
+</div>
+
+<!-- Project Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-primary mb-0">{{ tasks|length }}</h5>
+                <small class="text-muted">Total Tasks</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-success mb-0">{{ tasks|selectattr('status', 'equalto', 'COMPLETED')|list|length }}</h5>
+                <small class="text-muted">Completed</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-warning mb-0">{{ tasks|selectattr('status', 'equalto', 'IN_PROGRESS')|list|length }}</h5>
+                <small class="text-muted">In Progress</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-info mb-0">{{ ((project.end_date - project.start_date).days) }}</h5>
+                <small class="text-muted">Duration (Days)</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gantt Chart Controls -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="d-flex align-items-center">
+                    <label class="form-label me-3 mb-0">View:</label>
+                    <select class="form-select form-select-sm me-3" id="timeScale" style="width: auto;">
+                        <option value="day">Daily</option>
+                        <option value="week" selected>Weekly</option>
+                        <option value="month">Monthly</option>
+                    </select>
+                    
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showCriticalPath" checked>
+                        <label class="form-check-label" for="showCriticalPath">Critical Path</label>
+                    </div>
+                    
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="showDependencies" checked>
+                        <label class="form-check-label" for="showDependencies">Dependencies</label>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary" onclick="zoomOut()">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="zoomIn()">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="fitToScreen()">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gantt Chart Container -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0">
+            <i class="fas fa-chart-gantt me-2"></i>
+            Project Schedule
+        </h6>
+        <div class="d-flex align-items-center">
+            <small class="text-muted me-3">
+                {{ project.start_date.strftime('%B %d, %Y') }} - {{ project.end_date.strftime('%B %d, %Y') }}
+            </small>
+            <div class="gantt-legend d-flex">
+                <div class="legend-item me-3">
+                    <span class="legend-color bg-success"></span>
+                    <small>Completed</small>
+                </div>
+                <div class="legend-item me-3">
+                    <span class="legend-color bg-warning"></span>
+                    <small>In Progress</small>
+                </div>
+                <div class="legend-item me-3">
+                    <span class="legend-color bg-secondary"></span>
+                    <small>Not Started</small>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color bg-danger"></span>
+                    <small>Critical Path</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="gantt-container">
+            <div id="gantt-chart-container"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Task Details Modal -->
+<div class="modal fade" id="taskDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Task Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="taskDetailsContent">
+                <!-- Content will be loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="editTaskBtn">Edit Task</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/gantt-chart.js') }}"></script>
+<script>
+// Pass data to JavaScript
+window.ganttTasksData = {{ tasks|tojson }};
+window.projectId = {{ project.id }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Gantt chart
+    if (window.ganttTasksData && window.ganttTasksData.length > 0) {
+        window.ganttChart = new GanttChart('gantt-chart-container', {
+            height: 600,
+            dateFormat: d3.timeFormat("%Y-%m-%d")
+        });
+        
+        window.ganttChart.setData(window.ganttTasksData);
+        
+        // Override task update handler
+        window.ganttChart.onTaskUpdate = function(task) {
+            updateTaskOnServer(task);
+        };
+    } else {
+        showEmptyGanttState();
+    }
+    
+    // Setup event listeners
+    setupGanttControls();
+});
+
+function setupGanttControls() {
+    // Time scale change
+    document.getElementById('timeScale').addEventListener('change', function() {
+        // Update chart time scale
+        updateTimeScale(this.value);
+    });
+    
+    // Critical path toggle
+    document.getElementById('showCriticalPath').addEventListener('change', function() {
+        toggleCriticalPath(this.checked);
+    });
+    
+    // Dependencies toggle
+    document.getElementById('showDependencies').addEventListener('change', function() {
+        toggleDependencies(this.checked);
+    });
+}
+
+function updateTaskOnServer(task) {
+    fetch(`/scheduling/api/tasks/${task.id}/update`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify({
+            start_date: task.start.toISOString().split('T')[0],
+            end_date: task.end.toISOString().split('T')[0]
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error updating task:', data.error);
+            showAlert('Error updating task: ' + data.error, 'error');
+            // Revert changes
+            window.ganttChart.render();
+        } else {
+            showAlert('Task updated successfully', 'success');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Failed to update task', 'error');
+    });
+}
+
+function updateTimeScale(scale) {
+    // Implementation to update chart time scale
+    console.log('Updating time scale to:', scale);
+}
+
+function toggleCriticalPath(show) {
+    // Implementation to toggle critical path display
+    console.log('Toggle critical path:', show);
+}
+
+function toggleDependencies(show) {
+    // Implementation to toggle dependencies display
+    console.log('Toggle dependencies:', show);
+}
+
+function zoomIn() {
+    // Implementation for zoom in
+    console.log('Zoom in');
+}
+
+function zoomOut() {
+    // Implementation for zoom out
+    console.log('Zoom out');
+}
+
+function fitToScreen() {
+    // Implementation to fit chart to screen
+    console.log('Fit to screen');
+}
+
+function addTask() {
+    // Show add task modal or redirect
+    window.location.href = `/projects/${window.projectId}/tasks/create`;
+}
+
+function optimizeSchedule() {
+    if (confirm('Run AI-powered schedule optimization?')) {
+        fetch(`/scheduling/api/optimize/${window.projectId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+            },
+            body: JSON.stringify({ type: 'time' })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showOptimizationResults(data.results);
+            } else {
+                showAlert('Optimization failed: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Optimization failed', 'error');
+        });
+    }
+}
+
+function showOptimizationResults(results) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-magic me-2"></i>Schedule Optimization Results
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h4 class="text-success">${results.potential_time_savings_days || 0} days</h4>
+                                    <p class="mb-0">Potential Time Savings</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h4 class="text-primary">${results.optimized_duration_days || 0} days</h4>
+                                    <p class="mb-0">Optimized Duration</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <h6>Recommended Optimizations:</h6>
+                        <ul class="list-unstyled">
+                            ${(results.optimizations || []).map(opt => 
+                                `<li class="mb-2">
+                                    <i class="fas fa-check text-success me-2"></i>
+                                    <strong>${opt.description}</strong>
+                                    <br><small class="text-muted ms-3">Impact: ${opt.impact}, Effort: ${opt.implementation_effort}</small>
+                                </li>`
+                            ).join('')}
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary">Apply Recommendations</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bootstrapModal = new bootstrap.Modal(modal);
+    bootstrapModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(modal);
+    });
+}
+
+function showEmptyGanttState() {
+    document.getElementById('gantt-chart-container').innerHTML = `
+        <div class="text-center py-5">
+            <i class="fas fa-chart-gantt fa-4x text-muted mb-3"></i>
+            <h5>No Tasks to Display</h5>
+            <p class="text-muted">Add tasks to your project to see the Gantt chart.</p>
+            <button class="btn btn-primary" onclick="addTask()">
+                <i class="fas fa-plus me-2"></i>Add Your First Task
+            </button>
+        </div>
+    `;
+}
+
+function showAlert(message, type = 'info') {
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'success' ? 'alert-success' : 
+                      type === 'warning' ? 'alert-warning' : 'alert-info';
+    
+    const alert = document.createElement('div');
+    alert.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+    alert.style.top = '20px';
+    alert.style.right = '20px';
+    alert.style.zIndex = '9999';
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alert);
+    
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+
+<style>
+.gantt-container {
+    overflow-x: auto;
+    min-height: 600px;
+}
+
+.gantt-legend {
+    font-size: 0.8rem;
+}
+
+.legend-color {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 4px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+}
+
+/* Custom styles for Gantt chart elements */
+.gantt-task.completed {
+    fill: #28a745;
+}
+
+.gantt-task.in-progress {
+    fill: #ffc107;
+}
+
+.gantt-task.not-started {
+    fill: #6c757d;
+}
+
+.gantt-task.critical {
+    fill: #dc3545;
+}
+
+.gantt-task:hover {
+    opacity: 0.8;
+    cursor: pointer;
+}
+</style>
+{% endblock %}

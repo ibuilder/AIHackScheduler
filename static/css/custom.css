@@ -1,0 +1,470 @@
+/* Balfour Beatty Professional Theme */
+:root {
+    --bb-primary: #003f6b;
+    --bb-secondary: #00a651;
+    --bb-accent: #f7931e;
+    --bb-dark: #1e2832;
+    --bb-light: #f8f9fa;
+    --bb-gray: #6c757d;
+    --bb-border: #dee2e6;
+    --bb-success: #28a745;
+    --bb-warning: #ffc107;
+    --bb-danger: #dc3545;
+    --bb-info: #17a2b8;
+}
+
+/* Global Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bb-light);
+    color: var(--bb-dark);
+    line-height: 1.6;
+}
+
+/* Header Navigation */
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--bb-primary) !important;
+}
+
+.navbar {
+    background: linear-gradient(135deg, var(--bb-primary) 0%, var(--bb-dark) 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 1rem 0;
+}
+
+.navbar-nav .nav-link {
+    color: white !important;
+    font-weight: 500;
+    padding: 0.5rem 1rem !important;
+    transition: all 0.3s ease;
+}
+
+.navbar-nav .nav-link:hover {
+    color: var(--bb-accent) !important;
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+
+/* Cards and Containers */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+}
+
+.card-header {
+    background: linear-gradient(135deg, var(--bb-primary) 0%, var(--bb-secondary) 100%);
+    color: white;
+    border-radius: 12px 12px 0 0 !important;
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+}
+
+/* Buttons */
+.btn-primary {
+    background: linear-gradient(135deg, var(--bb-primary) 0%, var(--bb-secondary) 100%);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 0.75rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--bb-secondary) 0%, var(--bb-primary) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-outline-primary {
+    color: var(--bb-primary);
+    border-color: var(--bb-primary);
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--bb-primary);
+    border-color: var(--bb-primary);
+}
+
+.btn-success {
+    background-color: var(--bb-secondary);
+    border-color: var(--bb-secondary);
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.btn-warning {
+    background-color: var(--bb-accent);
+    border-color: var(--bb-accent);
+    color: var(--bb-dark);
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* Dashboard Styles */
+.dashboard-header {
+    background: linear-gradient(135deg, var(--bb-primary) 0%, var(--bb-dark) 100%);
+    color: white;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    border-radius: 0 0 20px 20px;
+}
+
+.dashboard-stat {
+    text-align: center;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease;
+}
+
+.dashboard-stat:hover {
+    transform: translateY(-3px);
+}
+
+.dashboard-stat .stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--bb-primary);
+    display: block;
+}
+
+.dashboard-stat .stat-label {
+    font-size: 0.9rem;
+    color: var(--bb-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Schedule Visualization Styles */
+.gantt-container {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    overflow-x: auto;
+}
+
+.gantt-chart {
+    min-width: 800px;
+    height: 400px;
+}
+
+.gantt-task {
+    fill: var(--bb-secondary);
+    stroke: var(--bb-primary);
+    stroke-width: 2;
+    rx: 4;
+    ry: 4;
+}
+
+.gantt-task.critical {
+    fill: var(--bb-danger);
+}
+
+.gantt-task.completed {
+    fill: var(--bb-success);
+}
+
+.gantt-task.in-progress {
+    fill: var(--bb-accent);
+}
+
+/* Linear Schedule Styles */
+.linear-schedule {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.linear-axis {
+    stroke: var(--bb-dark);
+    stroke-width: 2;
+}
+
+.linear-grid {
+    stroke: var(--bb-border);
+    stroke-width: 1;
+    stroke-dasharray: 2,2;
+}
+
+.linear-activity {
+    stroke: var(--bb-primary);
+    stroke-width: 3;
+    fill: none;
+}
+
+/* Pull Planning Styles */
+.pull-planning-board {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.pull-planning-week {
+    background: var(--bb-light);
+    border: 2px solid var(--bb-border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    min-height: 200px;
+}
+
+.pull-planning-week h5 {
+    color: var(--bb-primary);
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--bb-accent);
+}
+
+.pull-planning-task {
+    background: white;
+    border: 1px solid var(--bb-border);
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    cursor: move;
+    transition: all 0.2s ease;
+}
+
+.pull-planning-task:hover {
+    background: var(--bb-light);
+    border-color: var(--bb-primary);
+    transform: translateY(-1px);
+}
+
+.pull-planning-task.dragging {
+    opacity: 0.7;
+    transform: rotate(5deg);
+}
+
+/* Forms */
+.form-control {
+    border-radius: 8px;
+    border: 2px solid var(--bb-border);
+    padding: 0.75rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: var(--bb-primary);
+    box-shadow: 0 0 0 0.2rem rgba(0, 63, 107, 0.25);
+}
+
+.form-label {
+    font-weight: 600;
+    color: var(--bb-dark);
+    margin-bottom: 0.5rem;
+}
+
+/* Tables */
+.table {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.table thead th {
+    background: var(--bb-primary);
+    color: white;
+    border: none;
+    font-weight: 600;
+    padding: 1rem;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(0, 63, 107, 0.05);
+}
+
+/* Status Badges */
+.badge-status {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.badge-not-started {
+    background-color: var(--bb-gray);
+    color: white;
+}
+
+.badge-in-progress {
+    background-color: var(--bb-accent);
+    color: var(--bb-dark);
+}
+
+.badge-completed {
+    background-color: var(--bb-success);
+    color: white;
+}
+
+.badge-on-hold {
+    background-color: var(--bb-warning);
+    color: var(--bb-dark);
+}
+
+.badge-cancelled {
+    background-color: var(--bb-danger);
+    color: white;
+}
+
+/* Progress Bars */
+.progress {
+    height: 8px;
+    border-radius: 10px;
+    background-color: var(--bb-border);
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, var(--bb-secondary) 0%, var(--bb-accent) 100%);
+    border-radius: 10px;
+}
+
+/* Alerts */
+.alert {
+    border: none;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+}
+
+.alert-success {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: var(--bb-success);
+    border-left: 4px solid var(--bb-success);
+}
+
+.alert-warning {
+    background-color: rgba(247, 147, 30, 0.1);
+    color: var(--bb-accent);
+    border-left: 4px solid var(--bb-accent);
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--bb-danger);
+    border-left: 4px solid var(--bb-danger);
+}
+
+.alert-info {
+    background-color: rgba(0, 63, 107, 0.1);
+    color: var(--bb-primary);
+    border-left: 4px solid var(--bb-primary);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .dashboard-stat {
+        margin-bottom: 1rem;
+    }
+    
+    .gantt-container {
+        padding: 1rem;
+    }
+    
+    .pull-planning-week {
+        margin-bottom: 0.5rem;
+    }
+    
+    .navbar-nav {
+        margin-top: 1rem;
+    }
+}
+
+/* Loading States */
+.loading-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 0.25rem solid var(--bb-border);
+    border-radius: 50%;
+    border-top-color: var(--bb-primary);
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Azure Integration Styles */
+.azure-service-card {
+    border-left: 4px solid var(--bb-primary);
+    transition: all 0.3s ease;
+}
+
+.azure-service-card:hover {
+    border-left-color: var(--bb-secondary);
+}
+
+.service-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.service-status.connected {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: var(--bb-success);
+}
+
+.service-status.disconnected {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--bb-danger);
+}
+
+.service-status.syncing {
+    background-color: rgba(247, 147, 30, 0.1);
+    color: var(--bb-accent);
+}
+
+/* Footer */
+.footer {
+    background: var(--bb-dark);
+    color: white;
+    padding: 2rem 0;
+    margin-top: 3rem;
+}
+
+.footer a {
+    color: var(--bb-accent);
+    text-decoration: none;
+}
+
+.footer a:hover {
+    color: var(--bb-secondary);
+}
+
+/* Animation Classes */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-up {
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}

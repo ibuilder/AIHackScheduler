@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+
+{% block title %}Pull Planning - {{ project.name }} - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('projects.list_projects') }}">Projects</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('projects.project_detail', project_id=project.id) }}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">Pull Planning</li>
+            </ol>
+        </nav>
+        <h2 class="fw-bold mb-0">
+            <i class="fas fa-tasks me-2"></i>
+            Pull Planning - {{ project.name }}
+        </h2>
+        <p class="text-muted mb-0">Collaborative weekly planning board for lean construction</p>
+    </div>
+    <div class="btn-group">
+        <a href="{{ url_for('scheduling.gantt_view', project_id=project.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-chart-gantt me-2"></i>Gantt View
+        </a>
+        <a href="{{ url_for('scheduling.linear_view', project_id=project.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-route me-2"></i>Linear View
+        </a>
+        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="fas fa-cog me-2"></i>Actions
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="exportPullPlan()">
+                <i class="fas fa-download me-2"></i>Export Pull Plan
+            </a></li>
+            <li><a class="dropdown-item" href="#" onclick="addConstraintAnalysis()">
+                <i class="fas fa-exclamation-triangle me-2"></i>Constraint Analysis
+            </a></li>
+            <li><a class="dropdown-item" href="#" onclick="generateWeeklyReport()">
+                <i class="fas fa-file-alt me-2"></i>Weekly Report
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('reports.project_report', project_id=project.id) }}">
+                <i class="fas fa-chart-bar me-2"></i>Project Report
+            </a></li>
+        </ul>
+    </div>
+</div>
+
+<!-- Pull Planning Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-primary mb-0">{{ pull_plan_weeks.keys()|list|length }}</h5>
+                <small class="text-muted">Active Weeks</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-success mb-0">{{ total_tasks_count }}</h5>
+                <small class="text-muted">Total Tasks</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-warning mb-0">{{ constraint_count }}</h5>
+                <small class="text-muted">Constraints</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="text-info mb-0">{{ completion_percentage|round(1) }}%</h5>
+                <small class="text-muted">Completion</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pull Planning Controls -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center flex-wrap">
+                    <label class="form-label me-3 mb-0">View Mode:</label>
+                    <select class="form-select form-select-sm me-3" id="viewMode" style="width: auto;">
+                        <option value="6weeks" selected>6 Weeks</option>
+                        <option value="8weeks">8 Weeks</option>
+                        <option value="12weeks">12 Weeks</option>
+                    </select>
+                    
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showConstraints" checked>
+                        <label class="form-check-label" for="showConstraints">Show Constraints</label>
+                    </div>
+                    
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showProgress" checked>
+                        <label class="form-check-label" for="showProgress">Show Progress</label>
+                    </div>
+                    
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoSave" checked>
+                        <label class="form-check-label" for="autoSave">Auto Save</label>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <button class="btn btn-success btn-sm me-2" onclick="addNewTask()">
+                    <i class="fas fa-plus me-1"></i>Add Task
+                </button>
+                <button class="btn btn-info btn-sm" onclick="refreshBoard()">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pull Planning Board -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0">
+            <i class="fas fa-calendar-week me-2"></i>
+            Weekly Planning Board
+        </h6>
+        <div class="d-flex align-items-center">
+            <small class="text-muted me-3">
+                Drag tasks between weeks • Click tasks for details
+            </small>
+            <span class="badge bg-primary">Lean Construction Method</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div id="pull-planning-container" class="p-3">
+            <!-- Pull planning board will be rendered here by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<!-- Constraint Analysis Panel -->
+<div class="card mt-4" id="constraintPanel" style="display: none;">
+    <div class="card-header">
+        <h6 class="card-title mb-0">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Constraint Analysis
+        </h6>
+    </div>
+    <div class="card-body" id="constraintContent">
+        <!-- Constraint analysis content will be loaded here -->
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="card mt-4">
+    <div class="card-body">
+        <h6 class="mb-3">
+            <i class="fas fa-info-circle me-2"></i>Pull Planning Legend
+        </h6>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="d-flex align-items-center mb-2">
+                    <div class="pull-planning-task status-not-started me-3" style="width: 60px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 10px;">
+                        Task
+                    </div>
+                    <span>Not Started - Ready to begin</span>
+                </div>
+                <div class="d-flex align-items-center mb-2">
+                    <div class="pull-planning-task status-in-progress me-3" style="width: 60px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 10px;">
+                        Task
+                    </div>
+                    <span>In Progress - Currently active</span>
+                </div>
+                <div class="d-flex align-items-center mb-2">
+                    <div class="pull-planning-task status-completed me-3" style="width: 60px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 10px;">
+                        Task
+                    </div>
+                    <span>Completed - Finished work</span>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge badge-warning me-3">Weather</span>
+                    <span>Weather Dependent Constraint</span>
+                </div>
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge badge-danger me-3">Material</span>
+                    <span>Material Delivery Constraint</span>
+                </div>
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge badge-info me-3">Permits</span>
+                    <span>Permit/Approval Required</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pull-planning.js') }}"></script>
+<script>
+// Pass data to JavaScript
+window.pullPlanningData = {{ pull_plan_weeks|tojson }};
+window.projectId = {{ project.id }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Pull Planning Board
+    window.pullPlanning = new PullPlanningBoard('pull-planning-container', {
+        weeksToShow: 6,
+        allowDragDrop: true,
+        autoSave: true
+    });
+    
+    // Load data if available
+    if (window.pullPlanningData) {
+        window.pullPlanning.setData(window.pullPlanningData);
+    }
+    
+    // Setup event listeners
+    setupPullPlanningControls();
+});
+
+function setupPullPlanningControls() {
+    // View mode change
+    document.getElementById('viewMode').addEventListener('change', function() {
+        const weeks = parseInt(this.value.replace('weeks', ''));
+        window.pullPlanning.options.weeksToShow = weeks;
+        window.pullPlanning.refreshBoard();
+    });
+    
+    // Show constraints toggle
+    document.getElementById('showConstraints').addEventListener('change', function() {
+        toggleConstraintsDisplay(this.checked);
+    });
+    
+    // Show progress toggle
+    document.getElementById('showProgress').addEventListener('change', function() {
+        toggleProgressDisplay(this.checked);
+    });
+    
+    // Auto save toggle
+    document.getElementById('autoSave').addEventListener('change', function() {
+        window.pullPlanning.options.autoSave = this.checked;
+    });
+}
+
+function toggleConstraintsDisplay(show) {
+    const constraintBadges = document.querySelectorAll('.task-constraints .badge');
+    constraintBadges.forEach(badge => {
+        badge.style.display = show ? 'inline-block' : 'none';
+    });
+}
+
+function toggleProgressDisplay(show) {
+    const progressElements = document.querySelectorAll('.task-details small');
+    progressElements.forEach(element => {
+        if (element.textContent.includes('%')) {
+            element.style.display = show ? 'inline' : 'none';
+        }
+    });
+}
+
+function addNewTask() {
+    window.pullPlanning.addTask();
+}
+
+function refreshBoard() {
+    fetch(`/scheduling/pull-planning/${window.projectId}/data`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.pullPlanning.setData(data.pull_plan_weeks);
+                showAlert('Board refreshed successfully', 'success');
+            } else {
+                showAlert('Failed to refresh board', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Failed to refresh board', 'error');
+        });
+}
+
+function exportPullPlan() {
+    window.pullPlanning.exportBoard();
+    showAlert('Pull plan exported successfully', 'success');
+}
+
+function addConstraintAnalysis() {
+    const constraintPanel = document.getElementById('constraintPanel');
+    const constraintContent = document.getElementById('constraintContent');
+    
+    // Show constraint analysis
+    constraintPanel.style.display = 'block';
+    
+    // Get all tasks with constraints
+    const allTasks = window.pullPlanning.getAllTasks();
+    const constrainedTasks = allTasks.filter(task => task.constraints && task.constraints.length > 0);
+    
+    if (constrainedTasks.length === 0) {
+        constraintContent.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <h6>No Active Constraints</h6>
+                <p class="text-muted">All tasks are ready to proceed without constraints.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Group constraints by type
+    const constraintTypes = {};
+    constrainedTasks.forEach(task => {
+        task.constraints.forEach(constraint => {
+            if (!constraintTypes[constraint]) {
+                constraintTypes[constraint] = [];
+            }
+            constraintTypes[constraint].push(task);
+        });
+    });
+    
+    let constraintHtml = '<div class="row">';
+    
+    Object.entries(constraintTypes).forEach(([constraintType, tasks]) => {
+        const badgeClass = getBadgeClassForConstraint(constraintType);
+        constraintHtml += `
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="d-flex align-items-center">
+                            <span class="badge ${badgeClass} me-2">${constraintType}</span>
+                            ${tasks.length} Task${tasks.length > 1 ? 's' : ''}
+                        </h6>
+                        <ul class="list-unstyled mb-0">
+                            ${tasks.map(task => `
+                                <li class="mb-1">
+                                    <i class="fas fa-task me-2"></i>
+                                    ${task.name} (Week ${task.week})
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    constraintHtml += '</div>';
+    constraintContent.innerHTML = constraintHtml;
+}
+
+function getBadgeClassForConstraint(constraint) {
+    const constraintLower = constraint.toLowerCase();
+    if (constraintLower.includes('weather')) return 'badge-warning';
+    if (constraintLower.includes('material')) return 'badge-danger';
+    if (constraintLower.includes('permit')) return 'badge-info';
+    if (constraintLower.includes('delivery')) return 'badge-danger';
+    if (constraintLower.includes('inspection')) return 'badge-info';
+    return 'badge-secondary';
+}
+
+function generateWeeklyReport() {
+    const reportData = {
+        project_id: window.projectId,
+        week_data: window.pullPlanning.weeks,
+        tasks: window.pullPlanning.getAllTasks(),
+        generated_at: new Date().toISOString()
+    };
+    
+    fetch('/reports/generate-weekly-pull-plan', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+        },
+        body: JSON.stringify(reportData)
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `pull-plan-weekly-report-${new Date().toISOString().split('T')[0]}.pdf`;
+        link.click();
+        window.URL.revokeObjectURL(url);
+        
+        showAlert('Weekly report generated successfully', 'success');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Failed to generate weekly report', 'error');
+    });
+}
+
+function showAlert(message, type = 'info') {
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'success' ? 'alert-success' : 
+                      type === 'warning' ? 'alert-warning' : 'alert-info';
+    
+    const alert = document.createElement('div');
+    alert.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+    alert.style.top = '20px';
+    alert.style.right = '20px';
+    alert.style.zIndex = '9999';
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alert);
+    
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+
+<style>
+.pull-planning-board {
+    min-height: 600px;
+}
+
+.pull-planning-week {
+    background: #f8f9fa;
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    min-height: 300px;
+    transition: all 0.3s ease;
+}
+
+.pull-planning-week:hover {
+    border-color: var(--bb-primary);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.pull-planning-week.drag-over {
+    border-color: var(--bb-secondary);
+    background-color: rgba(0, 166, 81, 0.1);
+}
+
+.pull-planning-week h5 {
+    color: var(--bb-primary);
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--bb-accent);
+}
+
+.pull-planning-task {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    cursor: move;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.pull-planning-task:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    border-color: var(--bb-primary);
+}
+
+.pull-planning-task.dragging {
+    opacity: 0.7;
+    transform: rotate(3deg) scale(1.02);
+    z-index: 1000;
+}
+
+.pull-planning-task.status-not-started {
+    border-left: 4px solid var(--bb-gray);
+}
+
+.pull-planning-task.status-in-progress {
+    border-left: 4px solid var(--bb-accent);
+    background: linear-gradient(90deg, rgba(247, 147, 30, 0.1) 0%, white 100%);
+}
+
+.pull-planning-task.status-completed {
+    border-left: 4px solid var(--bb-success);
+    background: linear-gradient(90deg, rgba(40, 167, 69, 0.1) 0%, white 100%);
+}
+
+.pull-planning-task.status-on-hold {
+    border-left: 4px solid var(--bb-warning);
+}
+
+.pull-planning-task.status-cancelled {
+    border-left: 4px solid var(--bb-danger);
+    opacity: 0.6;
+}
+
+.task-content {
+    flex-grow: 1;
+}
+
+.task-name {
+    font-weight: 600;
+    color: var(--bb-dark);
+    margin-bottom: 0.25rem;
+}
+
+.task-details {
+    font-size: 0.8rem;
+    color: var(--bb-gray);
+    margin-bottom: 0.5rem;
+}
+
+.task-constraints .badge {
+    font-size: 0.7rem;
+    margin-right: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.task-actions {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.pull-planning-task:hover .task-actions {
+    opacity: 1;
+}
+
+.week-footer {
+    text-align: center;
+    padding: 1rem;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    color: var(--bb-gray);
+    font-size: 0.9rem;
+    margin-top: 1rem;
+}
+
+.week-tasks:empty + .week-footer {
+    display: block;
+}
+
+.week-tasks:not(:empty) + .week-footer {
+    display: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .pull-planning-week {
+        margin-bottom: 0.5rem;
+        min-height: 200px;
+    }
+    
+    .pull-planning-task {
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+    }
+    
+    .task-name {
+        font-size: 0.9rem;
+    }
+}
+
+/* Animation for task movements */
+@keyframes taskMove {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+    100% { transform: translateY(0); }
+}
+
+.pull-planning-task.task-moved {
+    animation: taskMove 0.5s ease;
+}
+</style>
+{% endblock %}
