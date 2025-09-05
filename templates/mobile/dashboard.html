@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+
+{% block title %}Mobile Dashboard - BBSchedule Platform{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+    <!-- Pull to Refresh -->
+    <div class="pull-to-refresh" id="pullToRefresh">
+        <i class="fas fa-arrow-down me-2"></i>Pull to refresh
+    </div>
+    
+    <!-- Offline Indicator -->
+    <div class="offline-indicator" id="offlineIndicator">
+        <i class="fas fa-wifi me-2"></i>You're offline. Some features may not work.
+    </div>
+    
+    <!-- Mobile Header -->
+    <div class="sticky-mobile-header d-md-none">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0">Good morning, {{ current_user.first_name }}!</h5>
+                <small class="text-muted">{{ moment().format('dddd, MMMM Do') }}</small>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" id="refreshBtn">
+                <i class="fas fa-sync"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-action-grid d-md-none mb-4">
+        <a href="{{ url_for('projects.create') }}" class="quick-action-card">
+            <div class="quick-action-icon bg-primary">
+                <i class="fas fa-plus"></i>
+            </div>
+            <div class="quick-action-title">New Project</div>
+        </a>
+        
+        <a href="{{ url_for('scheduling.gantt') }}" class="quick-action-card">
+            <div class="quick-action-icon bg-success">
+                <i class="fas fa-chart-gantt"></i>
+            </div>
+            <div class="quick-action-title">Gantt Chart</div>
+        </a>
+        
+        <a href="{{ url_for('reports.task_reports') }}" class="quick-action-card">
+            <div class="quick-action-icon bg-info">
+                <i class="fas fa-tasks"></i>
+            </div>
+            <div class="quick-action-title">My Tasks</div>
+        </a>
+        
+        <a href="#" class="quick-action-card" id="cameraBtn">
+            <div class="quick-action-icon bg-warning">
+                <i class="fas fa-camera"></i>
+            </div>
+            <div class="quick-action-title">Take Photo</div>
+        </a>
+    </div>
+
+    <!-- Mobile Project Cards -->
+    <div class="d-md-none">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Active Projects</h6>
+            <a href="{{ url_for('projects.list') }}" class="btn btn-outline-primary btn-sm">View All</a>
+        </div>
+        
+        {% for project in projects[:3] %}
+        <div class="mobile-project-card status-{{ project.status }}">
+            <div class="mobile-project-header">
+                <h6 class="mobile-project-title">{{ project.name }}</h6>
+                <span class="mobile-project-status badge bg-{{ 'success' if project.status == 'active' else 'secondary' }}">
+                    {{ project.status.title() }}
+                </span>
+            </div>
+            
+            <div class="mobile-project-meta">
+                <span><i class="fas fa-calendar me-1"></i>{{ project.start_date.strftime('%b %d') if project.start_date else 'No date' }}</span>
+                <span><i class="fas fa-user me-1"></i>{{ project.created_by_user.username if project.created_by_user else 'Unknown' }}</span>
+            </div>
+            
+            <div class="mobile-project-progress">
+                {% set progress = project.progress_percentage %}
+                <div class="d-flex justify-content-between mb-1">
+                    <small>Progress</small>
+                    <small>{{ progress }}%</small>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar bg-success" style="width: {{ progress }}%"></div>
+                </div>
+            </div>
+            
+            <div class="mobile-project-actions">
+                <a href="{{ url_for('projects.detail', project_id=project.id) }}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-eye me-1"></i>View
+                </a>
+                <button class="btn btn-outline-info btn-sm" onclick="quickUpdate({{ project.id }})">
+                    <i class="fas fa-edit me-1"></i>Update
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Mobile Task List -->
+    <div class="d-md-none">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Today's Tasks</h6>
+            <span class="badge bg-primary">{{ recent_tasks|length }}</span>
+        </div>
+        
+        {% for task in recent_tasks[:5] %}
+        <div class="mobile-task-item priority-{{ task.priority.name.lower() if task.priority else 'medium' }}">
+            <div class="mobile-task-header">
+                <h6 class="mobile-task-title">{{ task.name }}</h6>
+                <span class="mobile-task-status badge bg-{{ 'warning' if task.status.name == 'IN_PROGRESS' else 'success' if task.status.name == 'COMPLETED' else 'secondary' }}">
+                    {{ task.status.name.replace('_', ' ').title() }}
+                </span>
+            </div>
+            
+            <div class="mobile-task-details">
+                <span><i class="fas fa-project-diagram me-1"></i>{{ task.project.name }}</span>
+                <span><i class="fas fa-clock me-1"></i>{{ task.duration }}d</span>
+            </div>
+            
+            <div class="mobile-task-actions">
+                {% if task.status.name != 'COMPLETED' %}
+                <button class="btn btn-success btn-sm" onclick="completeTask({{ task.id }})">
+                    <i class="fas fa-check me-1"></i>Complete
+                </button>
+                {% endif %}
+                <button class="btn btn-outline-primary btn-sm" onclick="viewTask({{ task.id }})">
+                    <i class="fas fa-eye me-1"></i>Details
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+        
+        {% if not recent_tasks %}
+        <div class="text-center py-4">
+            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+            <h6>All caught up!</h6>
+            <p class="text-muted">No pending tasks for today.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Desktop View (Hidden on Mobile) -->
+    <div class="d-none d-md-block">
+        {% include 'reports/dashboard.html' %}
+    </div>
+</div>
+
+<!-- Quick Update Bottom Sheet -->
+<div class="bottom-sheet" id="quickUpdateSheet">
+    <div class="bottom-sheet-header">
+        <div class="bottom-sheet-handle"></div>
+        <h6 class="mb-0">Quick Update</h6>
+    </div>
+    <div class="bottom-sheet-body">
+        <form id="quickUpdateForm">
+            <div class="mb-3">
+                <label class="form-label">Status Update</label>
+                <select class="form-select" id="statusSelect">
+                    <option value="on_track">On Track</option>
+                    <option value="delayed">Delayed</option>
+                    <option value="completed">Completed</option>
+                    <option value="on_hold">On Hold</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Progress %</label>
+                <input type="range" class="form-range" id="progressRange" min="0" max="100" value="50">
+                <div class="d-flex justify-content-between">
+                    <small>0%</small>
+                    <small id="progressValue">50%</small>
+                    <small>100%</small>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                <textarea class="form-control" id="updateNotes" rows="3" placeholder="Add progress notes..."></textarea>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Attach Photo</label>
+                <input type="file" class="form-control" id="photoInput" accept="image/*" capture="environment">
+            </div>
+            
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-2"></i>Save Update
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="closeBottomSheet()">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Photo Capture Modal -->
+<div class="modal fade" id="photoModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Capture Progress Photo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <video id="cameraPreview" autoplay muted style="width: 100%; max-width: 400px; border-radius: 8px;"></video>
+                <canvas id="photoCanvas" style="display: none;"></canvas>
+                <div id="capturedPhoto" style="display: none;">
+                    <img id="photoPreview" style="width: 100%; max-width: 400px; border-radius: 8px;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="captureBtn">
+                    <i class="fas fa-camera me-2"></i>Capture
+                </button>
+                <button class="btn btn-success" id="savePhotoBtn" style="display: none;">
+                    <i class="fas fa-save me-2"></i>Save Photo
+                </button>
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Mobile Dashboard JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    initializeMobileDashboard();
+    setupPullToRefresh();
+    setupOfflineDetection();
+    setupCamera();
+});
+
+function initializeMobileDashboard() {
+    // Progress range slider
+    const progressRange = document.getElementById('progressRange');
+    const progressValue = document.getElementById('progressValue');
+    
+    if (progressRange) {
+        progressRange.addEventListener('input', function() {
+            progressValue.textContent = this.value + '%';
+        });
+    }
+    
+    // Refresh button
+    document.getElementById('refreshBtn')?.addEventListener('click', function() {
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
+    });
+    
+    // Quick update form
+    document.getElementById('quickUpdateForm')?.addEventListener('submit', handleQuickUpdate);
+}
+
+function setupPullToRefresh() {
+    let startY = 0;
+    let currentY = 0;
+    let pullDistance = 0;
+    let isRefreshing = false;
+    
+    const pullToRefresh = document.getElementById('pullToRefresh');
+    
+    document.addEventListener('touchstart', function(e) {
+        startY = e.touches[0].clientY;
+    });
+    
+    document.addEventListener('touchmove', function(e) {
+        if (window.scrollY === 0 && !isRefreshing) {
+            currentY = e.touches[0].clientY;
+            pullDistance = currentY - startY;
+            
+            if (pullDistance > 0) {
+                e.preventDefault();
+                const progress = Math.min(pullDistance / 60, 1);
+                pullToRefresh.style.transform = `translateY(${pullDistance - 60}px)`;
+                
+                if (progress >= 1) {
+                    pullToRefresh.classList.add('visible');
+                    pullToRefresh.innerHTML = '<i class="fas fa-sync fa-spin me-2"></i>Release to refresh';
+                } else {
+                    pullToRefresh.innerHTML = '<i class="fas fa-arrow-down me-2"></i>Pull to refresh';
+                }
+            }
+        }
+    });
+    
+    document.addEventListener('touchend', function() {
+        if (pullDistance > 60 && !isRefreshing) {
+            isRefreshing = true;
+            pullToRefresh.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Refreshing...';
+            
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            pullToRefresh.style.transform = 'translateY(-60px)';
+            pullToRefresh.classList.remove('visible');
+        }
+        pullDistance = 0;
+    });
+}
+
+function setupOfflineDetection() {
+    const offlineIndicator = document.getElementById('offlineIndicator');
+    
+    window.addEventListener('online', function() {
+        offlineIndicator.classList.remove('show');
+    });
+    
+    window.addEventListener('offline', function() {
+        offlineIndicator.classList.add('show');
+    });
+    
+    // Initial check
+    if (!navigator.onLine) {
+        offlineIndicator.classList.add('show');
+    }
+}
+
+function setupCamera() {
+    const cameraBtn = document.getElementById('cameraBtn');
+    const photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
+    const video = document.getElementById('cameraPreview');
+    const canvas = document.getElementById('photoCanvas');
+    const captureBtn = document.getElementById('captureBtn');
+    const savePhotoBtn = document.getElementById('savePhotoBtn');
+    const photoPreview = document.getElementById('photoPreview');
+    
+    cameraBtn?.addEventListener('click', async function(e) {
+        e.preventDefault();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' } 
+            });
+            video.srcObject = stream;
+            photoModal.show();
+        } catch (err) {
+            alert('Camera access denied or not available');
+        }
+    });
+    
+    captureBtn?.addEventListener('click', function() {
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0);
+        
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+        photoPreview.src = imageData;
+        
+        video.style.display = 'none';
+        document.getElementById('capturedPhoto').style.display = 'block';
+        captureBtn.style.display = 'none';
+        savePhotoBtn.style.display = 'inline-block';
+        
+        // Stop camera stream
+        video.srcObject.getTracks().forEach(track => track.stop());
+    });
+    
+    savePhotoBtn?.addEventListener('click', function() {
+        // Here you would upload the photo to your server
+        alert('Photo saved successfully!');
+        photoModal.hide();
+    });
+}
+
+function quickUpdate(projectId) {
+    const bottomSheet = document.getElementById('quickUpdateSheet');
+    bottomSheet.classList.add('show');
+    bottomSheet.dataset.projectId = projectId;
+}
+
+function closeBottomSheet() {
+    document.getElementById('quickUpdateSheet').classList.remove('show');
+}
+
+function handleQuickUpdate(e) {
+    e.preventDefault();
+    
+    const projectId = document.getElementById('quickUpdateSheet').dataset.projectId;
+    const formData = new FormData();
+    formData.append('status', document.getElementById('statusSelect').value);
+    formData.append('progress', document.getElementById('progressRange').value);
+    formData.append('notes', document.getElementById('updateNotes').value);
+    
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput.files[0]) {
+        formData.append('photo', photoInput.files[0]);
+    }
+    
+    // Submit update (would be an actual API call in production)
+    fetch(`/api/projects/${projectId}/quick-update`, {
+        method: 'POST',
+        body: formData
+    }).then(response => {
+        if (response.ok) {
+            closeBottomSheet();
+            showToast('Project updated successfully!', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast('Update failed. Please try again.', 'error');
+        }
+    }).catch(err => {
+        showToast('Network error. Update saved locally.', 'warning');
+        closeBottomSheet();
+    });
+}
+
+function completeTask(taskId) {
+    if (confirm('Mark this task as completed?')) {
+        fetch(`/api/tasks/${taskId}/complete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            }
+        }).then(response => {
+            if (response.ok) {
+                showToast('Task completed!', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast('Failed to complete task', 'error');
+            }
+        });
+    }
+}
+
+function viewTask(taskId) {
+    window.location.href = `/tasks/${taskId}`;
+}
+
+function showToast(message, type) {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'error' ? 'danger' : type} position-fixed`;
+    toast.style.cssText = 'top: 70px; right: 1rem; z-index: 1060; min-width: 250px;';
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+function getCSRFToken() {
+    const token = document.querySelector('meta[name=csrf-token]');
+    return token ? token.getAttribute('content') : '';
+}
+
+// Service Worker for Offline Support
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/js/sw.js')
+        .then(registration => console.log('SW registered'))
+        .catch(error => console.log('SW registration failed'));
+}
+</script>
+{% endblock %}

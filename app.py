@@ -149,6 +149,7 @@ def create_app(config_class=None):
     from blueprints.admin import admin_bp
     from analytics.advanced_analytics import analytics_bp
     from admin.user_management import admin_bp as user_mgmt_bp
+    from blueprints.project_templates import project_templates_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(projects_bp, url_prefix='/projects')
@@ -160,6 +161,7 @@ def create_app(config_class=None):
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(user_mgmt_bp, url_prefix='/management')
+    app.register_blueprint(project_templates_bp, url_prefix='/project-templates')
     
     # Register main routes
     from routes import main_bp
