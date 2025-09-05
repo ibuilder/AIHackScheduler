@@ -79,6 +79,7 @@ def create_app():
     from blueprints.project_management import project_mgmt_bp
     from blueprints.scheduling import scheduling_bp
     from blueprints.azure_integration import azure_bp
+    from blueprints.powerbi_integration import powerbi_bp
     from blueprints.reports import reports_bp
     from blueprints.admin import admin_bp
     
@@ -87,6 +88,7 @@ def create_app():
     app.register_blueprint(project_mgmt_bp, url_prefix='/api/projects')
     app.register_blueprint(scheduling_bp, url_prefix='/scheduling')
     app.register_blueprint(azure_bp, url_prefix='/azure')
+    app.register_blueprint(powerbi_bp, url_prefix='/api/powerbi')
     app.register_blueprint(reports_bp, url_prefix='/reports')
     app.register_blueprint(admin_bp, url_prefix='/admin')
     

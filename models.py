@@ -59,6 +59,7 @@ class Company(db.Model):
     # Relationships
     users = relationship("User", back_populates="company")
     projects = relationship("Project", back_populates="company")
+    powerbi_integrations = relationship("PowerBIIntegration", back_populates="company")
 
 class Project(db.Model):
     __tablename__ = 'projects'
@@ -183,3 +184,17 @@ class ScheduleOptimization(db.Model):
     confidence_score = Column(Float)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     applied_at = Column(DateTime)
+
+class PowerBIIntegration(db.Model):
+    __tablename__ = 'powerbi_integrations'
+    
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    workspace_id = Column(String(100), nullable=False)
+    sync_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    sync_status = Column(String(20), default='pending')  # pending, completed, failed
+    records_synced = Column(Integer, default=0)
+    error_message = Column(Text)
+    
+    # Relationships
+    company = relationship("Company", back_populates="powerbi_integrations")
