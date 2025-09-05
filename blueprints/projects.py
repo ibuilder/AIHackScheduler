@@ -23,24 +23,51 @@ def list_projects():
 @login_required
 def create_project():
     if request.method == 'POST':
-        project = Project(
-            name=request.form.get('name'),
-            description=request.form.get('description'),
-            project_number=request.form.get('project_number'),
-            company_id=current_user.company_id,
-            created_by=current_user.id,
-            start_date=datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date(),
-            end_date=datetime.strptime(request.form.get('end_date'), '%Y-%m-%d').date(),
-            budget=float(request.form.get('budget', 0)),
-            location=request.form.get('location'),
-            schedule_type=ScheduleType(request.form.get('schedule_type', 'gantt'))
-        )
-        
-        db.session.add(project)
-        db.session.commit()
-        
-        flash('Project created successfully!', 'success')
-        return redirect(url_for('projects.project_detail', project_id=project.id))
+        try:
+            # Validate form data
+            name = request.form.get('name')
+            if not name:
+                flash('Project name is required', 'error')
+                return render_template('projects/create.html')
+            
+            start_date_str = request.form.get('start_date')
+            end_date_str = request.form.get('end_date')
+            
+            if not start_date_str or not end_date_str:
+                flash('Start date and end date are required', 'error')
+                return render_template('projects/create.html')
+            
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            
+            if end_date <= start_date:
+                flash('End date must be after start date', 'error')
+                return render_template('projects/create.html')
+            
+            schedule_type_str = request.form.get('schedule_type', 'GANTT').upper()
+            
+            # Create project with proper enum handling
+            project = Project()
+            project.name = name
+            project.description = request.form.get('description')
+            project.project_number = request.form.get('project_number')
+            project.company_id = current_user.company_id
+            project.created_by = current_user.id
+            project.start_date = start_date
+            project.end_date = end_date
+            project.budget = float(request.form.get('budget', 0)) if request.form.get('budget') else None
+            project.location = request.form.get('location')
+            project.schedule_type = ScheduleType[schedule_type_str] if schedule_type_str in ['GANTT', 'LINEAR', 'PULL_PLANNING'] else ScheduleType.GANTT
+            
+            db.session.add(project)
+            db.session.commit()
+            
+            flash('Project created successfully!', 'success')
+            return redirect(url_for('projects.project_detail', project_id=project.id))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating project: {str(e)}', 'error')
     
     return render_template('projects/create.html')
 

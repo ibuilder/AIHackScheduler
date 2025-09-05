@@ -14,7 +14,8 @@
                 <p class="text-muted mb-0 mt-2">Set up a new construction project with scheduling parameters</p>
             </div>
             <div class="card-body">
-                <form method="POST">
+                <form method="POST" id="projectForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="row">
                         <div class="col-md-8">
                             <div class="mb-3">

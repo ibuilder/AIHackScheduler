@@ -113,7 +113,7 @@ class Task(db.Model):
     # Relationships
     project = relationship("Project", back_populates="tasks")
     parent_task = relationship("Task", remote_side=[id])
-    subtasks = relationship("Task")
+    subtasks = relationship("Task", overlaps="parent_task")
     dependencies = relationship("TaskDependency", foreign_keys="TaskDependency.task_id")
     resource_assignments = relationship("ResourceAssignment", back_populates="task")
 

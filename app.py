@@ -27,12 +27,20 @@ def setup_logging(app):
         app.logger.setLevel(logging.INFO)
         app.logger.info('BBSchedule Platform startup')
     
-    # Development logging
+    # Development logging - always setup file logging
     else:
         logging.basicConfig(
             level=logging.DEBUG,
-            format='%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+            format='%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]',
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler('logs/bbschedule-dev.log')
+            ]
         )
+    
+    # Always create logs directory
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
 
 class Base(DeclarativeBase):
     pass
@@ -54,9 +62,10 @@ def create_app():
     csrf.init_app(app)
     
     # Configure login manager
-    login_manager.login_view = 'auth.login'
-    login_manager.login_message = 'Please log in to access this page.'
-    login_manager.login_message_category = 'info'
+    if hasattr(login_manager, 'login_view'):
+        login_manager.login_view = 'auth.login'
+        login_manager.login_message = 'Please log in to access this page.'
+        login_manager.login_message_category = 'info'
     
     # User loader function for Flask-Login
     @login_manager.user_loader
@@ -67,6 +76,7 @@ def create_app():
     # Register blueprints
     from blueprints.auth import auth_bp
     from blueprints.projects import projects_bp
+    from blueprints.project_management import project_mgmt_bp
     from blueprints.scheduling import scheduling_bp
     from blueprints.azure_integration import azure_bp
     from blueprints.reports import reports_bp
@@ -74,6 +84,7 @@ def create_app():
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(projects_bp, url_prefix='/projects')
+    app.register_blueprint(project_mgmt_bp, url_prefix='/api/projects')
     app.register_blueprint(scheduling_bp, url_prefix='/scheduling')
     app.register_blueprint(azure_bp, url_prefix='/azure')
     app.register_blueprint(reports_bp, url_prefix='/reports')

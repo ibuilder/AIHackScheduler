@@ -46,10 +46,44 @@ def dashboard():
         Task.status == TaskStatus.COMPLETED
     ).count()
     
-    # For now, provide empty/default values for complex chart data
-    project_progress = []
-    status_distribution = []
-    overdue_tasks = 0
+    # Calculate real dashboard data
+    try:
+        # Project progress data for charts
+        project_progress = []
+        for project in projects[:5]:  # Top 5 projects
+            if hasattr(project, 'tasks'):
+                total_tasks = len(project.tasks)
+                completed_tasks = len([t for t in project.tasks if t.status == TaskStatus.COMPLETED])
+                progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+                project_progress.append({
+                    'name': project.name,
+                    'progress': round(progress, 1),
+                    'total_tasks': total_tasks,
+                    'completed_tasks': completed_tasks
+                })
+        
+        # Status distribution
+        status_counts = {}
+        all_tasks = Task.query.join(Project).filter(Project.company_id == current_user.company_id).all()
+        for task in all_tasks:
+            status = task.status.name
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        status_distribution = [{'status': k, 'count': v} for k, v in status_counts.items()]
+        
+        # Calculate overdue tasks (basic implementation)
+        from datetime import date
+        overdue_tasks = Task.query.join(Project).filter(
+            Project.company_id == current_user.company_id,
+            Task.end_date < date.today(),
+            Task.status != TaskStatus.COMPLETED
+        ).count()
+        
+    except Exception as e:
+        app.logger.error(f"Dashboard data calculation error: {str(e)}")
+        project_progress = []
+        status_distribution = []
+        overdue_tasks = 0
     
     return render_template('reports/dashboard.html',
                          projects=projects,
