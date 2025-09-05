@@ -3,10 +3,11 @@ import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_talisman import Talisman
 from sqlalchemy.orm import DeclarativeBase
 from werkzeug.middleware.proxy_fix import ProxyFix
 from extensions import db, login_manager, migrate, csrf
-from config import Config
+from config.production import get_config
 
 # Configure comprehensive logging
 def setup_logging(app):
@@ -42,12 +43,76 @@ def setup_logging(app):
     if not os.path.exists('logs'):
         os.mkdir('logs')
 
+def setup_enterprise_features(app):
+    """Setup enterprise-grade features"""
+    
+    # Import enterprise modules
+    from security.rate_limiting import SecurityMiddleware
+    from caching.cache_manager import cache_manager
+    from audit.audit_logger import audit_logger
+    from database.optimizations import db_optimizer
+    from monitoring.health_checks import health_bp
+    
+    # Security enhancements
+    SecurityMiddleware(app)
+    
+    # Setup Talisman for security headers if in production
+    if not app.config.get('DEBUG', False):
+        talisman_config = app.config.get('TALISMAN_CONFIG', {})
+        Talisman(app, **talisman_config)
+    
+    # Initialize caching
+    if app.config.get('ENABLE_CACHING', True):
+        cache_manager.init_app(app)
+        app.logger.info("Caching system initialized")
+    
+    # Initialize database optimizations
+    if not app.config.get('DEBUG', False):
+        try:
+            db_optimizer.init_app(app)
+            app.logger.info("Database optimizations applied")
+        except Exception as e:
+            app.logger.warning(f"Database optimization failed: {str(e)}")
+    
+    # Register health check endpoints
+    app.register_blueprint(health_bp, url_prefix='/health')
+    
+    # Setup rate limiting if enabled
+    if app.config.get('ENABLE_RATE_LIMITING', True):
+        try:
+            from security.rate_limiting import setup_rate_limiting
+            setup_rate_limiting(app)
+            app.logger.info("Rate limiting configured")
+        except Exception as e:
+            app.logger.warning(f"Rate limiting setup failed: {str(e)}")
+    
+    app.logger.info("Enterprise features initialized successfully")
+
 class Base(DeclarativeBase):
     pass
 
-def create_app():
+def create_app(config_class=None):
     app = Flask(__name__)
-    app.config.from_object(Config)
+    
+    # Load configuration based on environment
+    if config_class is None:
+        config_class = get_config()
+    
+    app.config.from_object(config_class)
+    
+    # Validate configuration for production
+    try:
+        config_class.validate_config()
+    except ValueError as e:
+        # Log warning but don't fail in development
+        if app.config.get('DEBUG', False):
+            print(f"Configuration warning (development mode): {str(e)}")
+        else:
+            app.logger.error(f"Configuration validation failed: {str(e)}")
+            raise
+    except AttributeError:
+        # Development config doesn't have validate_config method
+        pass
     
     # Configure secret key
     app.secret_key = os.environ.get("SESSION_SECRET")
@@ -102,6 +167,9 @@ def create_app():
     def utility_processor():
         return dict(datetime=datetime)
     
+    # Setup enterprise features
+    setup_enterprise_features(app)
+    
     # Setup logging
     setup_logging(app)
     
@@ -121,6 +189,11 @@ def create_app():
     def forbidden_error(error):
         app.logger.warning(f'403 error: Forbidden access to {request.url}')
         return jsonify({'error': 'Access forbidden'}), 403
+    
+    @app.errorhandler(429)
+    def rate_limit_error(error):
+        app.logger.warning(f'Rate limit exceeded: {request.url} from {request.remote_addr}')
+        return jsonify({'error': 'Rate limit exceeded. Please try again later.'}), 429
     
     # Create database tables
     with app.app_context():

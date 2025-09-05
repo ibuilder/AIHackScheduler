@@ -97,6 +97,17 @@ def dashboard():
                          project_progress=project_progress,
                          status_distribution=status_distribution)
 
+@main_bp.route('/enterprise')
+@login_required
+def enterprise_dashboard():
+    """Enterprise monitoring dashboard"""
+    # Check if user has admin privileges
+    if current_user.role.name not in ['ADMIN']:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    return render_template('enterprise/dashboard.html')
+
 @main_bp.route('/health')
 def health_check():
     return {'status': 'healthy', 'service': 'BBSchedule Platform'}, 200

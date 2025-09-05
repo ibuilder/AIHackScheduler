@@ -198,3 +198,25 @@ class PowerBIIntegration(db.Model):
     
     # Relationships
     company = relationship("Company", back_populates="powerbi_integrations")
+
+class AuditLog(db.Model):
+    """Audit log model for tracking user actions"""
+    __tablename__ = 'audit_logs'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    company_id = Column(Integer, ForeignKey('companies.id'))
+    action = Column(String(100), nullable=False)
+    resource_type = Column(String(50))  # project, task, user, etc.
+    resource_id = Column(Integer)
+    details = Column(Text)  # JSON string with additional details
+    ip_address = Column(String(45))
+    user_agent = Column(Text)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user = relationship("User")
+    company = relationship("Company")
+    
+    def __repr__(self):
+        return f'<AuditLog {self.action} by user {self.user_id}>'

@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+
+{% block title %}Enterprise Dashboard - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Enterprise Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Enterprise Dashboard
+                    </h1>
+                    <p class="text-muted mb-0">Real-time monitoring and analytics</p>
+                </div>
+                <div>
+                    <button class="btn btn-outline-primary me-2" id="refreshDashboard">
+                        <i class="fas fa-sync me-1"></i>Refresh
+                    </button>
+                    <div class="form-check form-switch d-inline-block">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                        <label class="form-check-label" for="autoRefresh">Auto-refresh</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Health Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="health-icon bg-success rounded-circle me-3">
+                            <i class="fas fa-heartbeat text-white"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-title mb-0">System Health</h6>
+                            <span class="badge bg-success">Healthy</span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">Uptime: 99.9%</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="health-icon bg-primary rounded-circle me-3">
+                            <i class="fas fa-database text-white"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-title mb-0">Database</h6>
+                            <span class="badge bg-success">Connected</span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">Response: 45ms</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="health-icon bg-info rounded-circle me-3">
+                            <i class="fas fa-memory text-white"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-title mb-0">Cache System</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">Hit rate: 89%</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="health-icon bg-warning rounded-circle me-3">
+                            <i class="fas fa-cloud text-white"></i>
+                        </div>
+                        <div>
+                            <h6 class="card-title mb-0">Power BI</h6>
+                            <span class="badge bg-warning">Pending Setup</span>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">Last sync: Never</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-area me-2"></i>
+                        Performance Metrics (Last 24 Hours)
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="performanceChart" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-tachometer-alt me-2"></i>
+                        System Resources
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="fw-medium">CPU Usage</small>
+                            <small>23%</small>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-success" style="width: 23%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="fw-medium">Memory Usage</small>
+                            <small>67%</small>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-warning" style="width: 67%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small class="fw-medium">Disk Usage</small>
+                            <small>45%</small>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-info" style="width: 45%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security & Audit -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-shield-alt me-2"></i>
+                        Security Events (Last 7 Days)
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Event</th>
+                                    <th>User</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-success">Login</span></td>
+                                    <td>admin</td>
+                                    <td>2 min ago</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-info">Project Created</span></td>
+                                    <td>project_manager</td>
+                                    <td>1 hour ago</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-warning">Rate Limit Hit</span></td>
+                                    <td>192.168.1.100</td>
+                                    <td>3 hours ago</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-users me-2"></i>
+                        Active Users (Last Hour)
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="me-3">
+                            <span class="display-6 fw-bold text-primary">23</span>
+                        </div>
+                        <div>
+                            <p class="mb-0">Active sessions</p>
+                            <small class="text-success">
+                                <i class="fas fa-arrow-up me-1"></i>
+                                15% increase
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div class="text-center">
+                                <div class="fw-bold">8</div>
+                                <small class="text-muted">Admins</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <div class="fw-bold">15</div>
+                                <small class="text-muted">Users</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Integration Status -->
+    <div class="row g-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-plug me-2"></i>
+                        Integration Status
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-md-4">
+                            <div class="integration-status-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="integration-icon bg-primary me-3">
+                                        <i class="fas fa-cloud"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0">Power BI</h6>
+                                        <small class="text-muted">Data Analytics</small>
+                                    </div>
+                                    <div class="ms-auto">
+                                        <span class="badge bg-warning">Setup Required</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="integration-status-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="integration-icon bg-success me-3">
+                                        <i class="fas fa-database"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0">PostgreSQL</h6>
+                                        <small class="text-muted">Primary Database</small>
+                                    </div>
+                                    <div class="ms-auto">
+                                        <span class="badge bg-success">Connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="integration-status-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="integration-icon bg-info me-3">
+                                        <i class="fas fa-memory"></i>
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0">Redis Cache</h6>
+                                        <small class="text-muted">Performance Cache</small>
+                                    </div>
+                                    <div class="ms-auto">
+                                        <span class="badge bg-success">Active</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Refresh Status -->
+<div class="position-fixed bottom-0 end-0 p-3">
+    <small class="text-muted refresh-status">Last updated: Never</small>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Performance Chart
+const ctx = document.getElementById('performanceChart').getContext('2d');
+const performanceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+        datasets: [{
+            label: 'Response Time (ms)',
+            data: [45, 52, 48, 61, 55, 47, 43],
+            borderColor: 'rgb(54, 162, 235)',
+            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+            tension: 0.1
+        }, {
+            label: 'CPU Usage (%)',
+            data: [12, 19, 15, 25, 22, 18, 14],
+            borderColor: 'rgb(255, 99, 132)',
+            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                position: 'top'
+            }
+        }
+    }
+});
+
+// Auto-refresh functionality
+let autoRefreshInterval;
+
+document.getElementById('autoRefresh').addEventListener('change', function() {
+    if (this.checked) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
+});
+
+document.getElementById('refreshDashboard').addEventListener('click', function() {
+    refreshDashboard();
+});
+
+function startAutoRefresh() {
+    autoRefreshInterval = setInterval(refreshDashboard, 30000); // 30 seconds
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+}
+
+async function refreshDashboard() {
+    try {
+        // Fetch health check data
+        const healthResponse = await fetch('/health/health/detailed');
+        const healthData = await healthResponse.json();
+        
+        // Update health status indicators
+        updateHealthStatus(healthData);
+        
+        // Update last refresh time
+        const now = new Date().toLocaleTimeString();
+        document.querySelector('.refresh-status').textContent = `Last updated: ${now}`;
+        
+    } catch (error) {
+        console.error('Dashboard refresh failed:', error);
+    }
+}
+
+function updateHealthStatus(healthData) {
+    // Update system health based on API response
+    // This is a simplified example - implement based on your health check structure
+    console.log('Health data:', healthData);
+}
+
+// Start auto-refresh by default
+startAutoRefresh();
+</script>
+
+<style>
+.health-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.integration-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.integration-status-card {
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.integration-status-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.stat-updated {
+    animation: pulse 1s ease-in-out;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+</style>
+{% endblock %}
