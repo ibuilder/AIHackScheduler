@@ -72,10 +72,9 @@ BBSchedule is a comprehensive, enterprise-grade construction scheduling applicat
 
 - Python 3.11+
 - PostgreSQL 13+
-- Redis 6+
-- Node.js 18+ (for frontend assets)
-- Azure Account (for AI services)
-- Stripe Account (for payments)
+- Redis 6+ (for caching and background tasks)
+- Azure Account (optional - for AI services)
+- Stripe Account (optional - for payment processing)
 
 ## 🔧 Installation
 
@@ -87,12 +86,11 @@ cd bbschedule-platform
 
 ### 2. Environment Setup
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Install dependencies (using uv - recommended)
+uv pip sync
 
-# Install dependencies
-pip install -r requirements.txt
+# Alternative: Install from deployment requirements
+pip install -r deployment/requirements.txt
 ```
 
 ### 3. Database Configuration
@@ -135,13 +133,13 @@ POWERBI_TENANT_ID=your-powerbi-tenant-id
 REDIS_URL=redis://localhost:6379/0
 ```
 
-### 5. Database Migration
+### 5. Database Initialization
 ```bash
 # Initialize database tables
-flask db upgrade
+export FLASK_APP=main.py
+flask shell -c "from app import db; db.create_all()"
 
-# Create initial data (optional)
-python scripts/seed_data.py
+# Note: Database migrations are planned for future releases
 ```
 
 ### 6. Start Services
@@ -150,9 +148,13 @@ python scripts/seed_data.py
 redis-server
 
 # Start Celery worker (in separate terminal)
-celery -A app.celery worker --loglevel=info
+celery -A tasks.celery_config.celery worker --loglevel=info
 
-# Start Flask application
+# Start Flask application (development)
+export FLASK_APP=main.py
+flask run --host=0.0.0.0 --port=5000
+
+# Or using Gunicorn (production)
 gunicorn --bind 0.0.0.0:5000 --reload main:app
 ```
 
@@ -189,9 +191,10 @@ gunicorn --bind 0.0.0.0:5000 --reload main:app
 
 ### Financial Management (`/financial`)
 - Transaction recording and categorization
-- Invoice generation and payment processing
+- Invoice generation and management
 - Budget tracking and variance analysis
 - Financial reporting and analytics
+- *Payment processing integration in progress*
 
 ### Equipment Management (`/equipment`)
 - Equipment registration and tracking
@@ -296,14 +299,9 @@ az webapp up --name bbschedule-platform --resource-group rg-bbschedule
 
 ### Testing
 ```bash
-# Run unit tests
-python -m pytest tests/
-
-# Run integration tests
-python -m pytest tests/integration/
-
-# Check code coverage
-coverage run -m pytest && coverage report
+# Testing framework setup is planned for future releases
+# Currently: Manual testing via application interface
+# Unit tests will be added in upcoming versions
 ```
 
 ## 📄 License
@@ -321,10 +319,10 @@ For technical support and questions:
 
 ### v2.0.0 (Current)
 - Complete financial management system
-- Stripe payment integration
 - Advanced equipment tracking
-- Azure AI predictive analytics
+- Azure AI predictive analytics integration
 - Enhanced security features
+- *Stripe payment integration in progress*
 
 ### v1.5.0
 - Power BI integration
