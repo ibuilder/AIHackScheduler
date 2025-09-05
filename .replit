@@ -30,7 +30,7 @@ args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
 waitForPort = 5000
 
 [agent]
-integrations = ["python_database==1.0.0", "python_log_in_with_replit==1.0.0"]
+integrations = ["python_log_in_with_replit==1.0.0", "python_database==1.0.0"]
 
 [[ports]]
 localPort = 5000
