@@ -150,6 +150,9 @@ def create_app(config_class=None):
     from analytics.advanced_analytics import analytics_bp
     from admin.user_management import admin_bp as user_mgmt_bp
     from blueprints.project_templates import project_templates_bp
+    from collaboration.real_time import collaboration_bp
+    from reports.executive_dashboard import executive_bp
+    from azure_ai.predictive_analytics import azure_ai_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(projects_bp, url_prefix='/projects')
@@ -162,6 +165,9 @@ def create_app(config_class=None):
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(user_mgmt_bp, url_prefix='/management')
     app.register_blueprint(project_templates_bp, url_prefix='/project-templates')
+    app.register_blueprint(collaboration_bp, url_prefix='/collaboration')
+    app.register_blueprint(executive_bp, url_prefix='/')
+    app.register_blueprint(azure_ai_bp, url_prefix='/api')
     
     # Register main routes
     from routes import main_bp

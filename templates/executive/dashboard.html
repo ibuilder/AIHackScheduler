@@ -1,0 +1,826 @@
+{% extends "base.html" %}
+
+{% block title %}Executive Dashboard - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Executive Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Executive Dashboard
+                    </h1>
+                    <p class="text-muted mb-0">Strategic insights and performance metrics</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <select class="form-select form-select-sm" id="timeRange" style="width: auto;">
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="365">Last Year</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" id="refreshData">
+                        <i class="fas fa-sync me-1"></i>Refresh
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="exportReport()">
+                        <i class="fas fa-download me-1"></i>Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Performance Indicators -->
+    <div class="row g-4 mb-4">
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="kpi-icon bg-primary rounded-circle me-3">
+                            <i class="fas fa-dollar-sign text-white"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="kpi-label mb-1">Total Revenue</h6>
+                            <div class="kpi-value" id="totalRevenue">$0</div>
+                            <small class="kpi-change text-success" id="revenueChange">
+                                <i class="fas fa-arrow-up me-1"></i>0%
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="kpi-icon bg-success rounded-circle me-3">
+                            <i class="fas fa-percentage text-white"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="kpi-label mb-1">Profit Margin</h6>
+                            <div class="kpi-value" id="profitMargin">0%</div>
+                            <small class="kpi-change text-success" id="marginChange">
+                                <i class="fas fa-arrow-up me-1"></i>0%
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="kpi-icon bg-info rounded-circle me-3">
+                            <i class="fas fa-tasks text-white"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="kpi-label mb-1">Projects Completed</h6>
+                            <div class="kpi-value" id="completedProjects">0</div>
+                            <small class="kpi-change text-info" id="projectsChange">
+                                <i class="fas fa-arrow-up me-1"></i>0%
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="kpi-icon bg-warning rounded-circle me-3">
+                            <i class="fas fa-exclamation-triangle text-white"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="kpi-label mb-1">Risk Level</h6>
+                            <div class="kpi-value" id="riskLevel">Low</div>
+                            <small class="kpi-change text-success" id="riskChange">
+                                <i class="fas fa-arrow-down me-1"></i>Improving
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row g-4 mb-4">
+        <!-- Financial Performance Chart -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="fas fa-chart-area me-2"></i>
+                            Financial Performance Trends
+                        </h6>
+                        <div class="chart-controls">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="financialMetric" id="revenue" value="revenue" checked>
+                                <label class="btn btn-outline-primary" for="revenue">Revenue</label>
+                                
+                                <input type="radio" class="btn-check" name="financialMetric" id="profit" value="profit">
+                                <label class="btn btn-outline-primary" for="profit">Profit</label>
+                                
+                                <input type="radio" class="btn-check" name="financialMetric" id="margin" value="margin">
+                                <label class="btn btn-outline-primary" for="margin">Margin</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="financialChart" height="80"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Portfolio Analysis -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-pie-chart me-2"></i>
+                        Portfolio Breakdown
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="portfolioChart" height="150"></canvas>
+                    <div class="portfolio-legend mt-3" id="portfolioLegend">
+                        <!-- Legend will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="row g-4 mb-4">
+        <!-- Operational Efficiency -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-tachometer-alt me-2"></i>
+                        Operational Efficiency
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="efficiency-metrics">
+                        <div class="metric-row mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="metric-label">Schedule Performance</span>
+                                <span class="metric-value" id="schedulePerformance">0%</span>
+                            </div>
+                            <div class="progress progress-sm">
+                                <div class="progress-bar bg-success" id="scheduleProgressBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-row mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="metric-label">Budget Adherence</span>
+                                <span class="metric-value" id="budgetAdherence">0%</span>
+                            </div>
+                            <div class="progress progress-sm">
+                                <div class="progress-bar bg-info" id="budgetProgressBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-row mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="metric-label">Resource Utilization</span>
+                                <span class="metric-value" id="resourceUtilization">0%</span>
+                            </div>
+                            <div class="progress progress-sm">
+                                <div class="progress-bar bg-warning" id="resourceProgressBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="metric-row">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="metric-label">Quality Score</span>
+                                <span class="metric-value" id="qualityScore">0%</span>
+                            </div>
+                            <div class="progress progress-sm">
+                                <div class="progress-bar bg-primary" id="qualityProgressBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Risk Assessment -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-shield-alt me-2"></i>
+                        Risk Assessment
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="risk-overview mb-4">
+                        <div class="text-center">
+                            <div class="risk-score-circle">
+                                <canvas id="riskGauge" width="120" height="120"></canvas>
+                            </div>
+                            <h5 class="mt-2 mb-0" id="overallRiskScore">Medium</h5>
+                            <small class="text-muted">Overall Risk Level</small>
+                        </div>
+                    </div>
+                    
+                    <div class="risk-categories">
+                        <div class="risk-category d-flex justify-content-between align-items-center mb-2">
+                            <span>Financial Risk</span>
+                            <span class="badge bg-success" id="financialRisk">Low</span>
+                        </div>
+                        <div class="risk-category d-flex justify-content-between align-items-center mb-2">
+                            <span>Operational Risk</span>
+                            <span class="badge bg-warning" id="operationalRisk">Medium</span>
+                        </div>
+                        <div class="risk-category d-flex justify-content-between align-items-center mb-2">
+                            <span>Market Risk</span>
+                            <span class="badge bg-success" id="marketRisk">Low</span>
+                        </div>
+                        <div class="risk-category d-flex justify-content-between align-items-center">
+                            <span>Regulatory Risk</span>
+                            <span class="badge bg-success" id="regulatoryRisk">Low</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Geographic Performance -->
+    <div class="row g-4 mb-4">
+        <div class="col">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-map-marked-alt me-2"></i>
+                        Geographic Performance
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-lg-8">
+                            <div class="geographic-chart">
+                                <canvas id="geographicChart" height="60"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="geographic-summary" id="geographicSummary">
+                                <!-- Geographic data will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Items and Alerts -->
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark">
+                    <h6 class="mb-0">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Action Items
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="actionItems">
+                        <div class="text-center text-muted py-3">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 mb-0">Loading action items...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        Strategic Recommendations
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="recommendations">
+                        <div class="text-center text-muted py-3">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 mb-0">Analyzing recommendations...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Executive Dashboard JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    loadExecutiveData();
+    setupEventListeners();
+});
+
+let financialChart, portfolioChart, geographicChart;
+
+function initializeCharts() {
+    // Financial Performance Chart
+    const financialCtx = document.getElementById('financialChart').getContext('2d');
+    financialChart = new Chart(financialCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Revenue',
+                data: [],
+                borderColor: 'rgb(54, 162, 235)',
+                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + (value / 1000000).toFixed(1) + 'M';
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    // Portfolio Chart
+    const portfolioCtx = document.getElementById('portfolioChart').getContext('2d');
+    portfolioChart = new Chart(portfolioCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    'rgb(255, 99, 132)',
+                    'rgb(54, 162, 235)',
+                    'rgb(255, 205, 86)',
+                    'rgb(75, 192, 192)',
+                    'rgb(153, 102, 255)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    // Geographic Chart
+    const geographicCtx = document.getElementById('geographicChart').getContext('2d');
+    geographicChart = new Chart(geographicCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Revenue by Region',
+                data: [],
+                backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                borderColor: 'rgb(54, 162, 235)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + (value / 1000000).toFixed(1) + 'M';
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    // Risk Gauge
+    drawRiskGauge();
+}
+
+function setupEventListeners() {
+    // Time range selector
+    document.getElementById('timeRange').addEventListener('change', loadExecutiveData);
+    
+    // Refresh button
+    document.getElementById('refreshData').addEventListener('click', function() {
+        this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+        loadExecutiveData();
+    });
+    
+    // Financial metric toggles
+    document.querySelectorAll('input[name="financialMetric"]').forEach(radio => {
+        radio.addEventListener('change', updateFinancialChart);
+    });
+}
+
+async function loadExecutiveData() {
+    try {
+        const timeRange = document.getElementById('timeRange').value;
+        
+        // Load all executive data in parallel
+        const [overview, financial, portfolio, efficiency, risk] = await Promise.all([
+            fetch(`/api/executive/overview?days=${timeRange}`).then(r => r.json()),
+            fetch(`/api/executive/financial?months=12`).then(r => r.json()),
+            fetch(`/api/executive/portfolio`).then(r => r.json()),
+            fetch(`/api/executive/efficiency`).then(r => r.json()),
+            fetch(`/api/executive/risk`).then(r => r.json())
+        ]);
+        
+        // Update all dashboard components
+        updateKPIs(overview);
+        updateFinancialChart(financial);
+        updatePortfolioChart(portfolio);
+        updateEfficiencyMetrics(efficiency);
+        updateRiskAssessment(risk);
+        updateActionItems(risk);
+        updateRecommendations(efficiency, risk);
+        
+        // Reset refresh button
+        document.getElementById('refreshData').innerHTML = '<i class="fas fa-sync me-1"></i>Refresh';
+        
+    } catch (error) {
+        console.error('Failed to load executive data:', error);
+        showError('Failed to load dashboard data');
+    }
+}
+
+function updateKPIs(data) {
+    // Update revenue
+    document.getElementById('totalRevenue').textContent = formatCurrency(data.financial.total_contract_value);
+    document.getElementById('revenueChange').innerHTML = '<i class="fas fa-arrow-up me-1"></i>12.3%';
+    
+    // Update profit margin
+    document.getElementById('profitMargin').textContent = data.financial.profit_margin.toFixed(1) + '%';
+    document.getElementById('marginChange').innerHTML = '<i class="fas fa-arrow-up me-1"></i>2.1%';
+    
+    // Update completed projects
+    document.getElementById('completedProjects').textContent = data.projects.completed;
+    document.getElementById('projectsChange').innerHTML = '<i class="fas fa-arrow-up me-1"></i>15%';
+    
+    // Update risk level
+    document.getElementById('riskLevel').textContent = data.risk_indicators.overall_health;
+    document.getElementById('riskChange').innerHTML = '<i class="fas fa-arrow-down me-1"></i>Improving';
+}
+
+function updateFinancialChart(data) {
+    const selectedMetric = document.querySelector('input[name="financialMetric"]:checked').value;
+    
+    financialChart.data.labels = data.monthly_trends.map(m => m.month);
+    
+    switch(selectedMetric) {
+        case 'revenue':
+            financialChart.data.datasets[0].data = data.monthly_trends.map(m => m.revenue);
+            financialChart.data.datasets[0].label = 'Revenue';
+            break;
+        case 'profit':
+            financialChart.data.datasets[0].data = data.monthly_trends.map(m => m.profit);
+            financialChart.data.datasets[0].label = 'Profit';
+            break;
+        case 'margin':
+            financialChart.data.datasets[0].data = data.monthly_trends.map(m => m.margin);
+            financialChart.data.datasets[0].label = 'Margin %';
+            break;
+    }
+    
+    financialChart.update();
+}
+
+function updatePortfolioChart(data) {
+    const sectors = data.sector_analysis;
+    
+    portfolioChart.data.labels = sectors.map(s => s.sector);
+    portfolioChart.data.datasets[0].data = sectors.map(s => s.revenue);
+    portfolioChart.update();
+    
+    // Update legend
+    const legend = document.getElementById('portfolioLegend');
+    let legendHTML = '';
+    sectors.forEach((sector, index) => {
+        const color = portfolioChart.data.datasets[0].backgroundColor[index];
+        const percentage = ((sector.revenue / sectors.reduce((sum, s) => sum + s.revenue, 0)) * 100).toFixed(1);
+        legendHTML += `
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <div class="d-flex align-items-center">
+                    <div class="legend-color me-2" style="background-color: ${color}; width: 12px; height: 12px; border-radius: 2px;"></div>
+                    <small>${sector.sector}</small>
+                </div>
+                <small class="fw-medium">${percentage}%</small>
+            </div>
+        `;
+    });
+    legend.innerHTML = legendHTML;
+}
+
+function updateEfficiencyMetrics(data) {
+    const schedule = data.schedule_performance.on_time_completion;
+    const budget = data.cost_performance.budget_adherence;
+    const quality = (100 - data.quality_metrics.defect_rate * 10); // Convert to percentage
+    const productivity = data.productivity_indicators.efficiency_score;
+    
+    // Update values and progress bars
+    updateMetric('schedulePerformance', 'scheduleProgressBar', schedule);
+    updateMetric('budgetAdherence', 'budgetProgressBar', budget);
+    updateMetric('resourceUtilization', 'resourceProgressBar', productivity);
+    updateMetric('qualityScore', 'qualityProgressBar', quality);
+}
+
+function updateMetric(valueId, barId, value) {
+    document.getElementById(valueId).textContent = value.toFixed(1) + '%';
+    document.getElementById(barId).style.width = value + '%';
+}
+
+function updateRiskAssessment(data) {
+    // Update risk categories
+    document.getElementById('financialRisk').textContent = data.risk_categories.financial;
+    document.getElementById('operationalRisk').textContent = data.risk_categories.operational;
+    document.getElementById('marketRisk').textContent = data.risk_categories.market;
+    document.getElementById('regulatoryRisk').textContent = data.risk_categories.regulatory;
+    
+    // Update overall risk
+    document.getElementById('overallRiskScore').textContent = data.overall_risk_level;
+    
+    // Update risk gauge
+    drawRiskGauge(data.overall_risk_level);
+}
+
+function updateActionItems(data) {
+    const actionItems = document.getElementById('actionItems');
+    
+    if (data.project_risks.high_risk.length === 0 && data.project_risks.medium_risk.length === 0) {
+        actionItems.innerHTML = `
+            <div class="text-center text-success py-3">
+                <i class="fas fa-check-circle fa-2x mb-2"></i>
+                <p class="mb-0">No critical action items at this time</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    
+    // High risk projects
+    data.project_risks.high_risk.forEach(project => {
+        html += `
+            <div class="action-item alert alert-danger mb-2">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>High Risk: ${project.name}</strong>
+                        <div class="mt-1">
+                            ${project.risk_factors.map(factor => `<span class="badge bg-danger me-1">${factor}</span>`).join('')}
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger">Review</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    // Medium risk projects
+    data.project_risks.medium_risk.slice(0, 3).forEach(project => {
+        html += `
+            <div class="action-item alert alert-warning mb-2">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>Medium Risk: ${project.name}</strong>
+                        <div class="mt-1">
+                            ${project.risk_factors.map(factor => `<span class="badge bg-warning me-1">${factor}</span>`).join('')}
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-warning">Monitor</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    actionItems.innerHTML = html;
+}
+
+function updateRecommendations(efficiency, risk) {
+    const recommendations = document.getElementById('recommendations');
+    
+    let html = '';
+    risk.project_risks.mitigation_recommendations.forEach(rec => {
+        html += `
+            <div class="recommendation-item mb-3 p-3 border-start border-3 border-info">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <i class="fas fa-lightbulb text-info me-2"></i>
+                        <span>${rec}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary">Implement</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    recommendations.innerHTML = html;
+}
+
+function drawRiskGauge(level = 'Medium') {
+    const canvas = document.getElementById('riskGauge');
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 45;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw gauge background
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = '#e9ecef';
+    ctx.stroke();
+    
+    // Determine gauge value and color
+    let gaugeValue, gaugeColor;
+    switch(level) {
+        case 'Low':
+            gaugeValue = 0.25;
+            gaugeColor = '#28a745';
+            break;
+        case 'High':
+            gaugeValue = 0.75;
+            gaugeColor = '#dc3545';
+            break;
+        default: // Medium
+            gaugeValue = 0.5;
+            gaugeColor = '#ffc107';
+    }
+    
+    // Draw gauge fill
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, Math.PI, Math.PI + (Math.PI * gaugeValue));
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = gaugeColor;
+    ctx.stroke();
+}
+
+function formatCurrency(amount) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount);
+}
+
+function exportReport() {
+    window.open('/api/executive/export-report', '_blank');
+}
+
+function showError(message) {
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    alert.style.cssText = 'top: 20px; right: 20px; z-index: 1060; max-width: 400px;';
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alert);
+    
+    setTimeout(() => alert.remove(), 5000);
+}
+</script>
+
+<style>
+.kpi-card {
+    transition: transform 0.2s ease;
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+}
+
+.kpi-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kpi-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.kpi-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.kpi-change {
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.progress-sm {
+    height: 6px;
+}
+
+.metric-row {
+    padding: 8px 0;
+}
+
+.metric-label {
+    font-weight: 500;
+    color: #495057;
+}
+
+.metric-value {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.risk-score-circle {
+    position: relative;
+    display: inline-block;
+}
+
+.action-item {
+    border-left-width: 4px !important;
+}
+
+.recommendation-item {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+
+.chart-controls .btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}
+
+.geographic-summary {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.risk-category {
+    padding: 4px 0;
+}
+
+.legend-color {
+    flex-shrink: 0;
+}
+</style>
+{% endblock %}

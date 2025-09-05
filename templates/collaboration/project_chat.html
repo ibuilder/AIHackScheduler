@@ -1,0 +1,636 @@
+{% extends "base.html" %}
+
+{% block title %}Project Collaboration - BBSchedule Platform{% endblock %}
+
+{% block head %}
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Collaboration Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h4 mb-0">
+                        <i class="fas fa-users me-2"></i>
+                        Project Collaboration
+                    </h1>
+                    <p class="text-muted mb-0">{{ project.name if project else 'Real-time team collaboration' }}</p>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="connection-status">
+                            <i class="fas fa-circle text-danger me-1" id="connectionIndicator"></i>
+                            <span id="connectionText">Connecting...</span>
+                        </div>
+                        <div class="active-users-count">
+                            <i class="fas fa-user-friends me-1"></i>
+                            <span id="activeUsersCount">0</span> online
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Chat Area -->
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="fas fa-comments me-2"></i>
+                            Project Discussion
+                        </h6>
+                        <div class="chat-controls">
+                            <button class="btn btn-sm btn-outline-light" id="clearChatBtn">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0 d-flex flex-column" style="height: 500px;">
+                    <!-- Messages Area -->
+                    <div class="messages-container flex-grow-1 overflow-auto p-3" id="messagesContainer">
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-comments fa-2x mb-2"></i>
+                            <p>Start the conversation! Messages will appear here.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Typing Indicators -->
+                    <div class="typing-indicators px-3 py-1" id="typingIndicators" style="display: none;">
+                        <small class="text-muted">
+                            <i class="fas fa-ellipsis-h me-1"></i>
+                            <span id="typingText"></span>
+                        </small>
+                    </div>
+                    
+                    <!-- Message Input -->
+                    <div class="message-input-container border-top p-3">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="messageInput" 
+                                   placeholder="Type your message..." maxlength="500">
+                            <button class="btn btn-primary" id="sendMessageBtn">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Active Users -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-users me-2"></i>
+                        Active Team Members
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="activeUsersList">
+                        <div class="text-center text-muted py-3">
+                            <i class="fas fa-user-clock fa-2x mb-2"></i>
+                            <p>Waiting for team members...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Activity -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-clock me-2"></i>
+                        Recent Activity
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="recentActivity">
+                        <div class="text-center text-muted py-3">
+                            <i class="fas fa-history fa-2x mb-2"></i>
+                            <p>No recent activity</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-bolt me-2"></i>
+                        Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="shareScreen()">
+                            <i class="fas fa-desktop me-2"></i>Share Screen
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="updateTaskStatus()">
+                            <i class="fas fa-tasks me-2"></i>Update Task
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="uploadFile()">
+                            <i class="fas fa-upload me-2"></i>Upload File
+                        </button>
+                        <button class="btn btn-outline-warning btn-sm" onclick="flagIssue()">
+                            <i class="fas fa-flag me-2"></i>Report Issue
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden project data -->
+<div id="projectData" data-project-id="{{ project.id if project else '' }}" style="display: none;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Real-time collaboration JavaScript
+let socket;
+let currentProjectId;
+let typingTimer;
+let isTyping = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCollaboration();
+    setupEventListeners();
+});
+
+function initializeCollaboration() {
+    // Get project ID
+    const projectData = document.getElementById('projectData');
+    currentProjectId = projectData ? projectData.dataset.projectId : null;
+    
+    if (!currentProjectId) {
+        console.error('No project ID found');
+        return;
+    }
+    
+    // Initialize Socket.IO connection
+    socket = io();
+    
+    // Connection event handlers
+    socket.on('connect', handleConnection);
+    socket.on('disconnect', handleDisconnection);
+    socket.on('connection_status', handleConnectionStatus);
+    socket.on('project_joined', handleProjectJoined);
+    socket.on('real_time_update', handleRealTimeUpdate);
+    socket.on('user_status', handleUserStatus);
+    socket.on('typing_indicator', handleTypingIndicator);
+    socket.on('error', handleError);
+    
+    // Auto-join project room
+    if (currentProjectId) {
+        socket.emit('join_project', { project_id: currentProjectId });
+    }
+}
+
+function handleConnection() {
+    updateConnectionStatus('connected', 'Connected');
+    console.log('Connected to collaboration server');
+}
+
+function handleDisconnection() {
+    updateConnectionStatus('disconnected', 'Disconnected');
+    console.log('Disconnected from collaboration server');
+}
+
+function handleConnectionStatus(data) {
+    console.log('Connection status:', data);
+}
+
+function handleProjectJoined(data) {
+    console.log('Joined project:', data);
+    updateActiveUsers(data.active_users);
+    loadRecentActivity();
+}
+
+function handleRealTimeUpdate(data) {
+    console.log('Real-time update:', data);
+    
+    switch(data.type) {
+        case 'project_message':
+            addMessageToChat(data);
+            break;
+        case 'task_update':
+            addActivityItem(data);
+            showNotification(`${data.updated_by} updated task: ${data.task_name}`);
+            break;
+        default:
+            console.log('Unknown update type:', data.type);
+    }
+}
+
+function handleUserStatus(data) {
+    console.log('User status change:', data);
+    updateUserStatus(data.user_id, data.status);
+    
+    if (data.status === 'online') {
+        showNotification(`${data.username} joined the project`);
+    } else {
+        showNotification(`${data.username} left the project`);
+    }
+}
+
+function handleTypingIndicator(data) {
+    if (data.is_typing) {
+        showTypingIndicator(data.username);
+    } else {
+        hideTypingIndicator(data.username);
+    }
+}
+
+function handleError(data) {
+    console.error('Collaboration error:', data);
+    showNotification(data.message, 'error');
+}
+
+function setupEventListeners() {
+    // Message input handlers
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendMessageBtn');
+    
+    messageInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        } else {
+            handleTyping();
+        }
+    });
+    
+    messageInput.addEventListener('input', handleTyping);
+    sendBtn.addEventListener('click', sendMessage);
+    
+    // Clear chat button
+    document.getElementById('clearChatBtn').addEventListener('click', clearChat);
+}
+
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    const message = messageInput.value.trim();
+    
+    if (!message || !socket || !currentProjectId) {
+        return;
+    }
+    
+    // Send message via Socket.IO
+    socket.emit('project_message', {
+        project_id: currentProjectId,
+        message: message
+    });
+    
+    // Clear input
+    messageInput.value = '';
+    stopTyping();
+}
+
+function addMessageToChat(data) {
+    const messagesContainer = document.getElementById('messagesContainer');
+    
+    // Remove empty state if present
+    const emptyState = messagesContainer.querySelector('.text-center');
+    if (emptyState) {
+        emptyState.remove();
+    }
+    
+    // Create message element
+    const messageElement = document.createElement('div');
+    messageElement.className = 'message-item mb-3';
+    
+    const isCurrentUser = data.user_id == {{ current_user.id if current_user else 'null' }};
+    const messageClass = isCurrentUser ? 'message-own' : 'message-other';
+    
+    messageElement.innerHTML = `
+        <div class="message ${messageClass}">
+            <div class="message-header">
+                <strong>${data.username}</strong>
+                <small class="text-muted ms-2">${formatTimestamp(data.timestamp)}</small>
+            </div>
+            <div class="message-content">${escapeHtml(data.message)}</div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageElement);
+    
+    // Scroll to bottom
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function updateActiveUsers(users) {
+    const activeUsersList = document.getElementById('activeUsersList');
+    const activeUsersCount = document.getElementById('activeUsersCount');
+    
+    if (users.length === 0) {
+        activeUsersList.innerHTML = `
+            <div class="text-center text-muted py-3">
+                <i class="fas fa-user-clock fa-2x mb-2"></i>
+                <p>No active users</p>
+            </div>
+        `;
+        activeUsersCount.textContent = '0';
+        return;
+    }
+    
+    let html = '';
+    users.forEach(user => {
+        html += `
+            <div class="user-item d-flex align-items-center mb-2" data-user-id="${user.user_id}">
+                <div class="user-avatar me-2">
+                    <div class="avatar-circle bg-primary text-white">
+                        ${user.username.charAt(0).toUpperCase()}
+                    </div>
+                </div>
+                <div class="user-info flex-grow-1">
+                    <div class="user-name">${user.username}</div>
+                    <small class="text-muted">Joined ${formatTimestamp(user.joined_at)}</small>
+                </div>
+                <div class="user-status">
+                    <i class="fas fa-circle text-success" title="Online"></i>
+                </div>
+            </div>
+        `;
+    });
+    
+    activeUsersList.innerHTML = html;
+    activeUsersCount.textContent = users.length;
+}
+
+function updateUserStatus(userId, status) {
+    const userItem = document.querySelector(`[data-user-id="${userId}"]`);
+    if (userItem) {
+        const statusIcon = userItem.querySelector('.user-status i');
+        if (status === 'online') {
+            statusIcon.className = 'fas fa-circle text-success';
+            statusIcon.title = 'Online';
+        } else {
+            statusIcon.className = 'fas fa-circle text-secondary';
+            statusIcon.title = 'Offline';
+        }
+    }
+}
+
+function handleTyping() {
+    if (!isTyping) {
+        isTyping = true;
+        socket.emit('typing_indicator', {
+            project_id: currentProjectId,
+            is_typing: true
+        });
+    }
+    
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(stopTyping, 2000);
+}
+
+function stopTyping() {
+    if (isTyping) {
+        isTyping = false;
+        socket.emit('typing_indicator', {
+            project_id: currentProjectId,
+            is_typing: false
+        });
+    }
+    clearTimeout(typingTimer);
+}
+
+function showTypingIndicator(username) {
+    const typingIndicators = document.getElementById('typingIndicators');
+    const typingText = document.getElementById('typingText');
+    
+    typingText.textContent = `${username} is typing...`;
+    typingIndicators.style.display = 'block';
+}
+
+function hideTypingIndicator(username) {
+    const typingIndicators = document.getElementById('typingIndicators');
+    typingIndicators.style.display = 'none';
+}
+
+function updateConnectionStatus(status, text) {
+    const indicator = document.getElementById('connectionIndicator');
+    const connectionText = document.getElementById('connectionText');
+    
+    if (status === 'connected') {
+        indicator.className = 'fas fa-circle text-success me-1';
+    } else {
+        indicator.className = 'fas fa-circle text-danger me-1';
+    }
+    
+    connectionText.textContent = text;
+}
+
+function addActivityItem(data) {
+    const recentActivity = document.getElementById('recentActivity');
+    
+    // Remove empty state if present
+    const emptyState = recentActivity.querySelector('.text-center');
+    if (emptyState) {
+        emptyState.remove();
+    }
+    
+    const activityElement = document.createElement('div');
+    activityElement.className = 'activity-item mb-2 p-2 border-start border-3 border-primary';
+    activityElement.innerHTML = `
+        <div class="activity-content">
+            <small class="fw-medium">${data.updated_by}</small>
+            <div class="activity-description">${data.task_name} - ${data.update_type}</div>
+            <small class="text-muted">${formatTimestamp(data.timestamp)}</small>
+        </div>
+    `;
+    
+    recentActivity.insertBefore(activityElement, recentActivity.firstChild);
+    
+    // Keep only last 10 items
+    const items = recentActivity.querySelectorAll('.activity-item');
+    if (items.length > 10) {
+        items[items.length - 1].remove();
+    }
+}
+
+async function loadRecentActivity() {
+    try {
+        const response = await fetch(`/api/collaboration/activity/${currentProjectId}`);
+        const data = await response.json();
+        
+        const recentActivity = document.getElementById('recentActivity');
+        
+        if (data.activity && data.activity.length > 0) {
+            let html = '';
+            data.activity.forEach(item => {
+                html += `
+                    <div class="activity-item mb-2 p-2 border-start border-3 border-info">
+                        <div class="activity-content">
+                            <small class="fw-medium">${item.user}</small>
+                            <div class="activity-description">${item.action}</div>
+                            <small class="text-muted">${formatTimestamp(item.timestamp)}</small>
+                        </div>
+                    </div>
+                `;
+            });
+            recentActivity.innerHTML = html;
+        }
+        
+    } catch (error) {
+        console.error('Failed to load recent activity:', error);
+    }
+}
+
+function clearChat() {
+    if (confirm('Clear all messages? This action cannot be undone.')) {
+        const messagesContainer = document.getElementById('messagesContainer');
+        messagesContainer.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-comments fa-2x mb-2"></i>
+                <p>Chat cleared. Start a new conversation!</p>
+            </div>
+        `;
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 1060; max-width: 300px;';
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Quick Action Functions
+function shareScreen() {
+    showNotification('Screen sharing feature coming soon!');
+}
+
+function updateTaskStatus() {
+    showNotification('Use the main project view to update task status');
+}
+
+function uploadFile() {
+    showNotification('File upload feature coming soon!');
+}
+
+function flagIssue() {
+    const issue = prompt('Describe the issue:');
+    if (issue) {
+        socket.emit('project_message', {
+            project_id: currentProjectId,
+            message: `🚨 ISSUE FLAGGED: ${issue}`
+        });
+    }
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (socket && currentProjectId) {
+        socket.emit('leave_project', { project_id: currentProjectId });
+    }
+});
+</script>
+
+<style>
+.avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.message {
+    max-width: 80%;
+    margin-bottom: 0.5rem;
+}
+
+.message-own {
+    margin-left: auto;
+}
+
+.message-own .message {
+    background-color: #007bff;
+    color: white;
+    border-radius: 15px 15px 5px 15px;
+    padding: 8px 12px;
+}
+
+.message-other .message {
+    background-color: #f8f9fa;
+    border-radius: 15px 15px 15px 5px;
+    padding: 8px 12px;
+}
+
+.message-header {
+    font-size: 0.8rem;
+    margin-bottom: 2px;
+}
+
+.message-content {
+    word-wrap: break-word;
+}
+
+.connection-status {
+    font-size: 0.9rem;
+}
+
+.activity-item {
+    border-radius: 4px;
+    background-color: #f8f9fa;
+}
+
+.user-item {
+    padding: 8px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.user-item:hover {
+    background-color: #f8f9fa;
+}
+
+.messages-container {
+    scroll-behavior: smooth;
+}
+
+.typing-indicators {
+    background-color: #f8f9fa;
+    font-style: italic;
+}
+</style>
+{% endblock %}
