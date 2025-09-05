@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}{{ equipment.name }} - Equipment Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Equipment Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('equipment.equipment_list') }}">Equipment</a></li>
+                    <li class="breadcrumb-item active">{{ equipment.equipment_number }}</li>
+                </ol>
+            </nav>
+            
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">{{ equipment.name }}</h1>
+                    <p class="text-muted mb-0">Equipment #{{ equipment.equipment_number }}</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('equipment.edit_equipment', equipment_id=equipment.id) }}" class="btn btn-primary">
+                        <i class="fas fa-edit me-2"></i>Edit
+                    </a>
+                    <button class="btn btn-outline-warning" onclick="scheduleMaintenanceModal({{ equipment.id }})">
+                        <i class="fas fa-wrench me-2"></i>Maintenance
+                    </button>
+                    <button class="btn btn-outline-info" onclick="assignEquipmentModal({{ equipment.id }})">
+                        <i class="fas fa-user-plus me-2"></i>Assign
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Equipment Information -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Equipment Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Status</label>
+                                <div>
+                                    <span class="badge bg-{{ 'success' if equipment.status.value == 'available' else 'info' if equipment.status.value == 'in_use' else 'warning' if equipment.status.value == 'maintenance' else 'danger' }} fs-6">
+                                        {{ equipment.status.value.replace('_', ' ').title() }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Type</label>
+                                <div>{{ equipment.equipment_type.value.replace('_', ' ').title() }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Manufacturer</label>
+                                <div>{{ equipment.manufacturer or '-' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Model</label>
+                                <div>{{ equipment.model or '-' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Serial Number</label>
+                                <div>{{ equipment.serial_number or '-' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Year Manufactured</label>
+                                <div>{{ equipment.year_manufactured or '-' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Current Location</label>
+                                <div>{{ equipment.location or 'Not specified' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">Operating Hours</label>
+                                <div>{{ "{:,.1f}".format(equipment.operating_hours) }} hours</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {% if equipment.description %}
+                    <div class="mt-4">
+                        <label class="form-label fw-semibold">Description</label>
+                        <p>{{ equipment.description }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Specifications -->
+            {% if equipment.specifications %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">Technical Specifications</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        {% for key, value in equipment.specifications.items() %}
+                        <div class="col-md-6">
+                            <div class="equipment-info-group">
+                                <label class="form-label fw-semibold">{{ key.replace('_', ' ').title() }}</label>
+                                <div>{{ value }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Assignment Info -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Current Assignment</h6>
+                </div>
+                <div class="card-body">
+                    {% if equipment.current_project %}
+                        <div class="assignment-info">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="fas fa-project-diagram text-primary me-2"></i>
+                                <strong>Project</strong>
+                            </div>
+                            <p class="mb-2">{{ equipment.current_project.name }}</p>
+                            <a href="{{ url_for('projects.detail', project_id=equipment.current_project.id) }}" class="btn btn-sm btn-outline-primary">
+                                View Project
+                            </a>
+                        </div>
+                    {% elif equipment.assigned_to_user %}
+                        <div class="assignment-info">
+                            <div class="d-flex align-items-center mb-2">
+                                <i class="fas fa-user text-info me-2"></i>
+                                <strong>Assigned User</strong>
+                            </div>
+                            <p class="mb-2">{{ equipment.assigned_to_user.username }}</p>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-3">
+                            <i class="fas fa-inbox fa-2x mb-2"></i>
+                            <p class="mb-0">Not currently assigned</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Maintenance Info -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">Maintenance Status</h6>
+                </div>
+                <div class="card-body">
+                    {% if equipment.last_maintenance_date %}
+                        <div class="maintenance-info">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Last Maintenance:</span>
+                                <span class="fw-medium">{{ equipment.last_maintenance_date.strftime('%m/%d/%Y') }}</span>
+                            </div>
+                            {% if equipment.next_maintenance_date %}
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Next Due:</span>
+                                <span class="fw-medium {% if equipment.is_maintenance_due %}text-danger{% elif equipment.days_until_maintenance and equipment.days_until_maintenance <= 7 %}text-warning{% endif %}">
+                                    {{ equipment.next_maintenance_date.strftime('%m/%d/%Y') }}
+                                </span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if equipment.is_maintenance_due %}
+                                <div class="alert alert-danger py-2 mt-3">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    Maintenance overdue!
+                                </div>
+                            {% elif equipment.days_until_maintenance and equipment.days_until_maintenance <= 7 %}
+                                <div class="alert alert-warning py-2 mt-3">
+                                    <i class="fas fa-clock me-2"></i>
+                                    Due in {{ equipment.days_until_maintenance }} days
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-3">
+                            <i class="fas fa-tools fa-2x mb-2"></i>
+                            <p class="mb-0">No maintenance records</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Financial Info -->
+            {% if equipment.purchase_cost or equipment.current_value %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">Financial Information</h6>
+                </div>
+                <div class="card-body">
+                    {% if equipment.purchase_cost %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Purchase Cost:</span>
+                        <span class="fw-medium">${{ "{:,.2f}".format(equipment.purchase_cost) }}</span>
+                    </div>
+                    {% endif %}
+                    {% if equipment.current_value %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Current Value:</span>
+                        <span class="fw-medium">${{ "{:,.2f}".format(equipment.current_value) }}</span>
+                    </div>
+                    {% endif %}
+                    {% if equipment.purchase_date %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Purchase Date:</span>
+                        <span class="fw-medium">{{ equipment.purchase_date.strftime('%m/%d/%Y') }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function assignEquipmentModal(equipmentId) {
+    // This would open the assignment modal
+    alert('Assignment feature coming soon!');
+}
+
+function scheduleMaintenanceModal(equipmentId) {
+    // This would open the maintenance scheduling modal
+    alert('Maintenance scheduling coming soon!');
+}
+</script>
+
+<style>
+.equipment-info-group {
+    margin-bottom: 1rem;
+}
+
+.equipment-info-group label {
+    color: #6c757d;
+    margin-bottom: 0.25rem;
+}
+
+.assignment-info {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+
+.maintenance-info {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}Maintenance Schedule - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('equipment.equipment_list') }}">Equipment</a></li>
+                    <li class="breadcrumb-item active">Maintenance Schedule</li>
+                </ol>
+            </nav>
+            
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-wrench me-2"></i>
+                        Maintenance Schedule
+                    </h1>
+                    <p class="text-muted mb-0">Track and manage equipment maintenance activities</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('equipment.create_maintenance') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Schedule Maintenance
+                    </a>
+                    <a href="{{ url_for('equipment.equipment_list') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Back to Equipment
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="maintenance-stat-icon bg-primary text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.total_scheduled }}</h4>
+                    <p class="text-muted mb-0 small">Total Scheduled</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="maintenance-stat-icon bg-danger text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.overdue }}</h4>
+                    <p class="text-muted mb-0 small">Overdue</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="maintenance-stat-icon bg-warning text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.this_week }}</h4>
+                    <p class="text-muted mb-0 small">This Week</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="maintenance-stat-icon bg-success text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <h4 class="mb-1">${{ "{:,.0f}".format(stats.total_cost) }}</h4>
+                    <p class="text-muted mb-0 small">Total Cost</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="">All Statuses</option>
+                                {% for status in maintenance_statuses %}
+                                <option value="{{ status.value }}" {% if current_filters.status == status.value %}selected{% endif %}>
+                                    {{ status.value.replace('_', ' ').title() }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Equipment</label>
+                            <select name="equipment" class="form-select">
+                                <option value="">All Equipment</option>
+                                {% for equipment in equipment_list %}
+                                <option value="{{ equipment.id }}" {% if current_filters.equipment == equipment.id|string %}selected{% endif %}>
+                                    {{ equipment.equipment_number }} - {{ equipment.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Date Range</label>
+                            <select name="range" class="form-select">
+                                <option value="30" {% if current_filters.range == '30' %}selected{% endif %}>Next 30 Days</option>
+                                <option value="60" {% if current_filters.range == '60' %}selected{% endif %}>Next 60 Days</option>
+                                <option value="90" {% if current_filters.range == '90' %}selected{% endif %}>Next 90 Days</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-outline-secondary" type="submit">
+                                    <i class="fas fa-search me-1"></i>Filter
+                                </button>
+                                <a href="{{ url_for('equipment.maintenance_schedule') }}" class="btn btn-outline-secondary">
+                                    <i class="fas fa-times"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Maintenance Schedule -->
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">Maintenance Schedule</h6>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="exportMaintenanceSchedule()">
+                                <i class="fas fa-download me-1"></i>Export
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="printSchedule()">
+                                <i class="fas fa-print me-1"></i>Print
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0">
+                    {% if maintenance_records %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Equipment</th>
+                                    <th>Type</th>
+                                    <th>Scheduled Date</th>
+                                    <th>Status</th>
+                                    <th>Technician</th>
+                                    <th>Est. Cost</th>
+                                    <th>Priority</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in maintenance_records %}
+                                <tr class="{% if record.is_overdue %}table-danger{% elif record.scheduled_date <= (date.today() + timedelta(days=7)) %}table-warning{% endif %}">
+                                    <td>
+                                        <div>
+                                            <div class="fw-medium">{{ record.equipment.name }}</div>
+                                            <small class="text-muted">{{ record.equipment.equipment_number }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark">
+                                            {{ record.maintenance_type.value.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            {{ record.scheduled_date.strftime('%m/%d/%Y') }}
+                                            {% if record.is_overdue %}
+                                                <br><small class="text-danger">Overdue</small>
+                                            {% elif record.scheduled_date <= (date.today() + timedelta(days=7)) %}
+                                                <br><small class="text-warning">Due Soon</small>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'warning' if record.status.value == 'scheduled' else 'info' if record.status.value == 'in_progress' else 'success' if record.status.value == 'completed' else 'danger' }}">
+                                            {{ record.status.value.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td>{{ record.assigned_technician.username if record.assigned_technician else 'Unassigned' }}</td>
+                                    <td>${{ "{:,.0f}".format(record.total_cost) if record.total_cost else '-' }}</td>
+                                    <td>
+                                        {% if record.is_overdue %}
+                                            <span class="badge bg-danger">Critical</span>
+                                        {% elif record.maintenance_type.value == 'emergency' %}
+                                            <span class="badge bg-danger">Emergency</span>
+                                        {% elif record.maintenance_type.value == 'preventive' %}
+                                            <span class="badge bg-primary">Preventive</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Normal</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                                                    data-bs-toggle="dropdown">
+                                                Actions
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="viewMaintenanceDetails({{ record.id }})">
+                                                        <i class="fas fa-eye me-2"></i>View Details
+                                                    </a>
+                                                </li>
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="editMaintenance({{ record.id }})">
+                                                        <i class="fas fa-edit me-2"></i>Edit
+                                                    </a>
+                                                </li>
+                                                {% if record.status.value == 'scheduled' %}
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="startMaintenance({{ record.id }})">
+                                                        <i class="fas fa-play me-2"></i>Start Work
+                                                    </a>
+                                                </li>
+                                                {% elif record.status.value == 'in_progress' %}
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="completeMaintenance({{ record.id }})">
+                                                        <i class="fas fa-check me-2"></i>Complete
+                                                    </a>
+                                                </li>
+                                                {% endif %}
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <a class="dropdown-item text-danger" href="#" onclick="cancelMaintenance({{ record.id }})">
+                                                        <i class="fas fa-times me-2"></i>Cancel
+                                                    </a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-calendar-check fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No Maintenance Scheduled</h5>
+                        <p class="text-muted mb-4">No maintenance activities are currently scheduled for the selected period.</p>
+                        <a href="{{ url_for('equipment.create_maintenance') }}" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Schedule First Maintenance
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function viewMaintenanceDetails(recordId) {
+    alert('Maintenance details feature coming soon!');
+}
+
+function editMaintenance(recordId) {
+    alert('Edit maintenance feature coming soon!');
+}
+
+function startMaintenance(recordId) {
+    if (confirm('Start maintenance work for this equipment?')) {
+        alert('Start maintenance feature coming soon!');
+    }
+}
+
+function completeMaintenance(recordId) {
+    if (confirm('Mark this maintenance as completed?')) {
+        alert('Complete maintenance feature coming soon!');
+    }
+}
+
+function cancelMaintenance(recordId) {
+    if (confirm('Cancel this maintenance? This action cannot be undone.')) {
+        alert('Cancel maintenance feature coming soon!');
+    }
+}
+
+function exportMaintenanceSchedule() {
+    window.open('/api/equipment/maintenance/export', '_blank');
+}
+
+function printSchedule() {
+    window.print();
+}
+</script>
+
+<style>
+.maintenance-stat-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.table-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.table-warning {
+    background-color: rgba(255, 193, 7, 0.1);
+}
+
+@media print {
+    .btn, .dropdown, .card-header .d-flex > div:last-child {
+        display: none !important;
+    }
+    
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+}
+</style>
+{% endblock %}

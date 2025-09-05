@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}Add Equipment - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('equipment.equipment_list') }}">Equipment</a></li>
+                    <li class="breadcrumb-item active">Add Equipment</li>
+                </ol>
+            </nav>
+            
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">Add New Equipment</h1>
+                    <p class="text-muted mb-0">Register new equipment in the inventory system</p>
+                </div>
+                <a href="{{ url_for('equipment.equipment_list') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Equipment
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Equipment Form -->
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Equipment Information</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="row g-4">
+                            <!-- Basic Information -->
+                            <div class="col-md-6">
+                                <label for="equipment_number" class="form-label">Equipment Number *</label>
+                                <input type="text" class="form-control" id="equipment_number" name="equipment_number" required>
+                                <div class="form-text">Unique identifier for this equipment</div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="name" class="form-label">Equipment Name *</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+                            
+                            <div class="col-12">
+                                <label for="description" class="form-label">Description</label>
+                                <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="equipment_type" class="form-label">Equipment Type *</label>
+                                <select class="form-select" id="equipment_type" name="equipment_type" required>
+                                    <option value="">Select type...</option>
+                                    {% for eq_type in equipment_types %}
+                                    <option value="{{ eq_type.value }}">{{ eq_type.value.replace('_', ' ').title() }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="location" class="form-label">Current Location</label>
+                                <input type="text" class="form-control" id="location" name="location">
+                            </div>
+                            
+                            <!-- Manufacturer Information -->
+                            <div class="col-md-6">
+                                <label for="manufacturer" class="form-label">Manufacturer</label>
+                                <input type="text" class="form-control" id="manufacturer" name="manufacturer">
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="model" class="form-label">Model</label>
+                                <input type="text" class="form-control" id="model" name="model">
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="serial_number" class="form-label">Serial Number</label>
+                                <input type="text" class="form-control" id="serial_number" name="serial_number">
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="year_manufactured" class="form-label">Year Manufactured</label>
+                                <input type="number" class="form-control" id="year_manufactured" name="year_manufactured" min="1900" max="2030">
+                            </div>
+                            
+                            <!-- Financial Information -->
+                            <div class="col-md-6">
+                                <label for="purchase_date" class="form-label">Purchase Date</label>
+                                <input type="date" class="form-control" id="purchase_date" name="purchase_date">
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="purchase_cost" class="form-label">Purchase Cost</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="purchase_cost" name="purchase_cost" step="0.01" min="0">
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="current_value" class="form-label">Current Value</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="current_value" name="current_value" step="0.01" min="0">
+                                </div>
+                            </div>
+                            
+                            <!-- Technical Specifications -->
+                            <div class="col-12">
+                                <h6 class="mt-3 mb-3">Technical Specifications</h6>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="fuel_capacity" class="form-label">Fuel Capacity</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="fuel_capacity" name="fuel_capacity" step="0.1" min="0">
+                                    <span class="input-group-text">gallons</span>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="max_load_capacity" class="form-label">Max Load Capacity</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="max_load_capacity" name="max_load_capacity" step="0.1" min="0">
+                                    <span class="input-group-text">lbs</span>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="engine_power" class="form-label">Engine Power</label>
+                                <input type="text" class="form-control" id="engine_power" name="engine_power" placeholder="e.g., 250 HP">
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="operating_weight" class="form-label">Operating Weight</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="operating_weight" name="operating_weight" step="0.1" min="0">
+                                    <span class="input-group-text">lbs</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Maintenance Settings -->
+                            <div class="col-12">
+                                <h6 class="mt-3 mb-3">Maintenance Settings</h6>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="maintenance_interval_hours" class="form-label">Maintenance Interval</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="maintenance_interval_hours" name="maintenance_interval_hours" value="250" min="1">
+                                    <span class="input-group-text">hours</span>
+                                </div>
+                                <div class="form-text">Hours between scheduled maintenance</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Form Actions -->
+                        <div class="d-flex justify-content-end gap-2 mt-4 pt-4 border-top">
+                            <a href="{{ url_for('equipment.equipment_list') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Add Equipment
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar with Guidelines -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Equipment Guidelines</h6>
+                </div>
+                <div class="card-body">
+                    <div class="guidelines">
+                        <div class="guideline-item mb-3">
+                            <h6 class="text-primary mb-1">
+                                <i class="fas fa-hashtag me-2"></i>Equipment Number
+                            </h6>
+                            <p class="small text-muted mb-0">Use a consistent numbering system. Example: EQ-001, CAT-2023-001</p>
+                        </div>
+                        
+                        <div class="guideline-item mb-3">
+                            <h6 class="text-primary mb-1">
+                                <i class="fas fa-map-marker-alt me-2"></i>Location Tracking
+                            </h6>
+                            <p class="small text-muted mb-0">Specify the current location: job site, warehouse, or maintenance facility</p>
+                        </div>
+                        
+                        <div class="guideline-item mb-3">
+                            <h6 class="text-primary mb-1">
+                                <i class="fas fa-wrench me-2"></i>Maintenance Interval
+                            </h6>
+                            <p class="small text-muted mb-0">Set based on manufacturer recommendations or company policy</p>
+                        </div>
+                        
+                        <div class="guideline-item">
+                            <h6 class="text-primary mb-1">
+                                <i class="fas fa-info-circle me-2"></i>Complete Information
+                            </h6>
+                            <p class="small text-muted mb-0">Provide as much detail as possible for better tracking and reporting</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">Equipment Types</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled small mb-0">
+                        <li class="mb-1"><strong>Heavy Machinery:</strong> Excavators, bulldozers, cranes</li>
+                        <li class="mb-1"><strong>Vehicles:</strong> Trucks, trailers, service vehicles</li>
+                        <li class="mb-1"><strong>Tools:</strong> Power tools, hand tools, specialized tools</li>
+                        <li class="mb-1"><strong>Generators:</strong> Portable and stationary power generators</li>
+                        <li class="mb-1"><strong>Safety Equipment:</strong> Scaffolding, safety barriers</li>
+                        <li class="mb-1"><strong>Specialized:</strong> Custom or industry-specific equipment</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-generate equipment number suggestion
+    const typeSelect = document.getElementById('equipment_type');
+    const numberInput = document.getElementById('equipment_number');
+    
+    typeSelect.addEventListener('change', function() {
+        if (this.value && !numberInput.value) {
+            const prefix = this.value.toUpperCase().split('_')[0].substring(0, 3);
+            const timestamp = new Date().getFullYear();
+            numberInput.value = `${prefix}-${timestamp}-001`;
+        }
+    });
+    
+    // Form validation
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const requiredFields = ['equipment_number', 'name', 'equipment_type'];
+        let isValid = true;
+        
+        requiredFields.forEach(fieldName => {
+            const field = document.getElementById(fieldName);
+            if (!field.value.trim()) {
+                field.classList.add('is-invalid');
+                isValid = false;
+            } else {
+                field.classList.remove('is-invalid');
+            }
+        });
+        
+        if (!isValid) {
+            e.preventDefault();
+            alert('Please fill in all required fields.');
+        }
+    });
+});
+</script>
+
+<style>
+.guidelines .guideline-item {
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+    border-left: 3px solid #007bff;
+    border-radius: 0 4px 4px 0;
+}
+
+.form-control.is-invalid {
+    border-color: #dc3545;
+}
+
+.input-group-text {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+}
+</style>
+{% endblock %}

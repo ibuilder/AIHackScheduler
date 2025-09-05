@@ -24,6 +24,34 @@ class TaskStatus(enum.Enum):
     ON_HOLD = "on_hold"
     CANCELLED = "cancelled"
 
+class EquipmentType(enum.Enum):
+    HEAVY_MACHINERY = "heavy_machinery"
+    VEHICLES = "vehicles"
+    TOOLS = "tools"
+    GENERATORS = "generators"
+    SAFETY_EQUIPMENT = "safety_equipment"
+    SPECIALIZED = "specialized"
+
+class EquipmentStatus(enum.Enum):
+    AVAILABLE = "available"
+    IN_USE = "in_use"
+    MAINTENANCE = "maintenance"
+    OUT_OF_SERVICE = "out_of_service"
+    RESERVED = "reserved"
+
+class MaintenanceType(enum.Enum):
+    PREVENTIVE = "preventive"
+    CORRECTIVE = "corrective"
+    EMERGENCY = "emergency"
+    INSPECTION = "inspection"
+
+class MaintenanceStatus(enum.Enum):
+    SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+    CANCELLED = "cancelled"
+
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     
@@ -42,6 +70,7 @@ class User(UserMixin, db.Model):
     # Relationships
     company = relationship("Company", back_populates="users")
     projects = relationship("Project", back_populates="created_by_user")
+    assigned_equipment = relationship("Equipment", back_populates="assigned_to_user")
 
 class Company(db.Model):
     __tablename__ = 'companies'
@@ -60,6 +89,134 @@ class Company(db.Model):
     users = relationship("User", back_populates="company")
     projects = relationship("Project", back_populates="company")
     powerbi_integrations = relationship("PowerBIIntegration", back_populates="company")
+    equipment = relationship("Equipment", back_populates="company")
+    suppliers = relationship("Supplier", back_populates="company")
+
+# Equipment Management Models
+class Equipment(db.Model):
+    __tablename__ = 'equipment'
+    
+    id = Column(Integer, primary_key=True)
+    equipment_number = Column(String(50), nullable=False)
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    equipment_type = Column(db.Enum(EquipmentType), nullable=False)
+    manufacturer = Column(String(100))
+    model = Column(String(100))
+    serial_number = Column(String(100))
+    year_manufactured = Column(Integer)
+    purchase_date = Column(Date)
+    purchase_cost = Column(Float)
+    current_value = Column(Float)
+    
+    # Status and availability
+    status = Column(db.Enum(EquipmentStatus), nullable=False, default=EquipmentStatus.AVAILABLE)
+    location = Column(String(200))
+    current_project_id = Column(Integer, ForeignKey('projects.id'))
+    assigned_to_user_id = Column(Integer, ForeignKey('users.id'))
+    
+    # Operational data
+    operating_hours = Column(Float, default=0.0)
+    fuel_capacity = Column(Float)
+    max_load_capacity = Column(Float)
+    specifications = Column(JSON)
+    
+    # Maintenance data
+    last_maintenance_date = Column(Date)
+    next_maintenance_date = Column(Date)
+    maintenance_interval_hours = Column(Integer, default=250)
+    warranty_expiry_date = Column(Date)
+    
+    # Insurance and compliance
+    insurance_policy_number = Column(String(100))
+    insurance_expiry_date = Column(Date)
+    registration_number = Column(String(100))
+    registration_expiry_date = Column(Date)
+    
+    # Ownership and company
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    is_owned = Column(Boolean, default=True)
+    rental_rate_per_day = Column(Float)
+    supplier_id = Column(Integer, ForeignKey('suppliers.id'))
+    
+    # Audit fields
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    is_active = Column(Boolean, default=True)
+    
+    # Relationships
+    company = relationship("Company", back_populates="equipment")
+    current_project = relationship("Project", back_populates="assigned_equipment")
+    assigned_to_user = relationship("User", back_populates="assigned_equipment")
+    supplier = relationship("Supplier", back_populates="equipment")
+    
+    # Unique constraint per company
+    __table_args__ = (
+        db.UniqueConstraint('company_id', 'equipment_number', name='uq_equipment_number_per_company'),
+        db.Index('ix_equipment_company_status', 'company_id', 'status'),
+        db.Index('ix_equipment_company_type', 'company_id', 'equipment_type'),
+        db.Index('ix_equipment_maintenance_due', 'company_id', 'next_maintenance_date'),
+    )
+    
+    @property
+    def utilization_rate(self):
+        """Calculate equipment utilization rate over last 30 days"""
+        return 75.5  # Placeholder - would calculate from usage logs
+    
+    @property
+    def days_until_maintenance(self):
+        """Calculate days until next scheduled maintenance"""
+        if self.next_maintenance_date:
+            from datetime import date
+            delta = self.next_maintenance_date - date.today()
+            return delta.days
+        return None
+    
+    @property
+    def is_maintenance_due(self):
+        """Check if maintenance is due"""
+        if self.next_maintenance_date:
+            from datetime import date
+            return self.next_maintenance_date <= date.today()
+        return False
+
+class Supplier(db.Model):
+    __tablename__ = 'suppliers'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False)
+    contact_person = Column(String(100))
+    email = Column(String(120))
+    phone = Column(String(20))
+    address = Column(Text)
+    website = Column(String(200))
+    
+    # Service details
+    services_provided = Column(JSON)
+    equipment_types = Column(JSON)
+    service_areas = Column(JSON)
+    
+    # Business information
+    business_license = Column(String(100))
+    insurance_details = Column(JSON)
+    payment_terms = Column(String(100))
+    
+    # Performance metrics
+    reliability_rating = Column(Float, default=5.0)
+    cost_rating = Column(Float, default=5.0)
+    service_rating = Column(Float, default=5.0)
+    
+    # Company association
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    
+    # Audit fields
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    is_active = Column(Boolean, default=True)
+    
+    # Relationships
+    company = relationship("Company", back_populates="suppliers")
+    equipment = relationship("Equipment", back_populates="supplier")
 
 class Project(db.Model):
     __tablename__ = 'projects'
@@ -84,6 +241,7 @@ class Project(db.Model):
     # Relationships
     company = relationship("Company", back_populates="projects")
     created_by_user = relationship("User", back_populates="projects")
+    assigned_equipment = relationship("Equipment", back_populates="current_project")
     tasks = relationship("Task", back_populates="project", cascade="all, delete-orphan")
     resources = relationship("Resource", back_populates="project", cascade="all, delete-orphan")
 

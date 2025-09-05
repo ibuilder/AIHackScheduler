@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+
+{% block title %}Equipment Management - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Equipment Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-tools me-2"></i>
+                        Equipment Management
+                    </h1>
+                    <p class="text-muted mb-0">Track and manage construction equipment, maintenance, and utilization</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('equipment.create_equipment') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Add Equipment
+                    </a>
+                    <a href="{{ url_for('equipment.maintenance_schedule') }}" class="btn btn-outline-warning">
+                        <i class="fas fa-wrench me-2"></i>Maintenance
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Equipment Statistics -->
+    <div class="row g-4 mb-4">
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="equipment-stat-icon bg-primary text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-tools"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.total }}</h4>
+                    <p class="text-muted mb-0 small">Total Equipment</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="equipment-stat-icon bg-success text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.available }}</h4>
+                    <p class="text-muted mb-0 small">Available</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="equipment-stat-icon bg-info text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-play-circle"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.in_use }}</h4>
+                    <p class="text-muted mb-0 small">In Use</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="equipment-stat-icon bg-warning text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-wrench"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.maintenance }}</h4>
+                    <p class="text-muted mb-0 small">Maintenance</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="equipment-stat-icon bg-danger text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h4 class="mb-1">{{ stats.maintenance_due }}</h4>
+                    <p class="text-muted mb-0 small">Maintenance Due</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-2 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="equipment-stat-icon bg-secondary text-white rounded-circle mx-auto mb-2">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h4 class="mb-1">78%</h4>
+                    <p class="text-muted mb-0 small">Utilization</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters and Search -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Equipment Type</label>
+                            <select name="type" class="form-select">
+                                <option value="">All Types</option>
+                                {% for eq_type in equipment_types %}
+                                <option value="{{ eq_type.value }}" {% if current_filters.type == eq_type.value %}selected{% endif %}>
+                                    {{ eq_type.value.replace('_', ' ').title() }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="">All Statuses</option>
+                                {% for status in equipment_statuses %}
+                                <option value="{{ status.value }}" {% if current_filters.status == status.value %}selected{% endif %}>
+                                    {{ status.value.replace('_', ' ').title() }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Location</label>
+                            <input type="text" name="location" class="form-control" 
+                                   placeholder="Filter by location" value="{{ current_filters.location or '' }}">
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Search</label>
+                            <div class="input-group">
+                                <input type="text" name="search" class="form-control" 
+                                       placeholder="Search equipment..." value="{{ current_filters.search or '' }}">
+                                <button class="btn btn-outline-secondary" type="submit">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Equipment List -->
+    <div class="row">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">Equipment Inventory</h6>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="exportEquipment()">
+                                <i class="fas fa-download me-1"></i>Export
+                            </button>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="viewMode" id="listView" checked>
+                                <label class="btn btn-outline-primary" for="listView">
+                                    <i class="fas fa-list"></i>
+                                </label>
+                                
+                                <input type="radio" class="btn-check" name="viewMode" id="cardView">
+                                <label class="btn btn-outline-primary" for="cardView">
+                                    <i class="fas fa-th"></i>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0">
+                    <!-- List View -->
+                    <div id="listViewContent" class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Equipment #</th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Location</th>
+                                    <th>Assigned To</th>
+                                    <th>Last Maintenance</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for equipment in equipment_list.items %}
+                                <tr>
+                                    <td>
+                                        <span class="fw-medium">{{ equipment.equipment_number }}</span>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            <div class="fw-medium">{{ equipment.name }}</div>
+                                            <small class="text-muted">{{ equipment.manufacturer }} {{ equipment.model }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark">
+                                            {{ equipment.equipment_type.value.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if equipment.status.value == 'available' else 'info' if equipment.status.value == 'in_use' else 'warning' if equipment.status.value == 'maintenance' else 'danger' }}">
+                                            {{ equipment.status.value.replace('_', ' ').title() }}
+                                        </span>
+                                    </td>
+                                    <td>{{ equipment.location or '-' }}</td>
+                                    <td>
+                                        {% if equipment.current_project %}
+                                            <small class="text-muted">Project:</small><br>
+                                            <a href="{{ url_for('projects.detail', project_id=equipment.current_project.id) }}">
+                                                {{ equipment.current_project.name[:20] }}...
+                                            </a>
+                                        {% elif equipment.assigned_to_user %}
+                                            <small class="text-muted">User:</small><br>
+                                            {{ equipment.assigned_to_user.username }}
+                                        {% else %}
+                                            <span class="text-muted">Unassigned</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if equipment.last_maintenance_date %}
+                                            {{ equipment.last_maintenance_date.strftime('%m/%d/%Y') }}
+                                            {% if equipment.is_maintenance_due %}
+                                                <br><small class="text-danger">Due Now!</small>
+                                            {% elif equipment.days_until_maintenance and equipment.days_until_maintenance <= 7 %}
+                                                <br><small class="text-warning">Due in {{ equipment.days_until_maintenance }} days</small>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted">No record</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                                                    data-bs-toggle="dropdown">
+                                                Actions
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li>
+                                                    <a class="dropdown-item" href="{{ url_for('equipment.equipment_detail', equipment_id=equipment.id) }}">
+                                                        <i class="fas fa-eye me-2"></i>View Details
+                                                    </a>
+                                                </li>
+                                                <li>
+                                                    <a class="dropdown-item" href="{{ url_for('equipment.edit_equipment', equipment_id=equipment.id) }}">
+                                                        <i class="fas fa-edit me-2"></i>Edit
+                                                    </a>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <a class="dropdown-item" href="{{ url_for('equipment.create_maintenance') }}">
+                                                        <i class="fas fa-wrench me-2"></i>Schedule Maintenance
+                                                    </a>
+                                                </li>
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="assignEquipmentModal({{ equipment.id }})">
+                                                        <i class="fas fa-user-plus me-2"></i>Assign
+                                                    </a>
+                                                </li>
+                                                {% if equipment.status == equipment_statuses.IN_USE %}
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="checkInEquipment({{ equipment.id }})">
+                                                        <i class="fas fa-check me-2"></i>Check In
+                                                    </a>
+                                                </li>
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Card View (Hidden by default) -->
+                    <div id="cardViewContent" class="row g-4 p-4" style="display: none;">
+                        {% for equipment in equipment_list.items %}
+                        <div class="col-lg-4 col-md-6">
+                            <div class="card equipment-card border-0 shadow-sm">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <h6 class="card-title mb-1">{{ equipment.name }}</h6>
+                                            <p class="text-muted small mb-0">{{ equipment.equipment_number }}</p>
+                                        </div>
+                                        <span class="badge bg-{{ 'success' if equipment.status.value == 'available' else 'info' if equipment.status.value == 'in_use' else 'warning' if equipment.status.value == 'maintenance' else 'danger' }}">
+                                            {{ equipment.status.value.replace('_', ' ').title() }}
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="equipment-details mb-3">
+                                        <div class="row g-2 small">
+                                            <div class="col-6">
+                                                <strong>Type:</strong><br>
+                                                {{ equipment.equipment_type.value.replace('_', ' ').title() }}
+                                            </div>
+                                            <div class="col-6">
+                                                <strong>Location:</strong><br>
+                                                {{ equipment.location or 'Not specified' }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-grid gap-2">
+                                        <a href="{{ url_for('equipment.equipment_detail', equipment_id=equipment.id) }}" 
+                                           class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-eye me-1"></i>View Details
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                {% if equipment_list.pages > 1 %}
+                <div class="card-footer">
+                    <nav aria-label="Equipment pagination">
+                        <ul class="pagination pagination-sm justify-content-center mb-0">
+                            {% if equipment_list.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('equipment.equipment_list', page=equipment_list.prev_num, **current_filters) }}">Previous</a>
+                            </li>
+                            {% endif %}
+                            
+                            {% for page_num in equipment_list.iter_pages() %}
+                                {% if page_num %}
+                                    {% if page_num != equipment_list.page %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('equipment.equipment_list', page=page_num, **current_filters) }}">{{ page_num }}</a>
+                                    </li>
+                                    {% else %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                    {% endif %}
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if equipment_list.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('equipment.equipment_list', page=equipment_list.next_num, **current_filters) }}">Next</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assignment Modal -->
+<div class="modal fade" id="assignmentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Assign Equipment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="assignmentForm">
+                    <input type="hidden" id="assignEquipmentId" name="equipment_id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Assign To</label>
+                        <select class="form-select" id="assignmentType">
+                            <option value="project">Project</option>
+                            <option value="user">User</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3" id="projectSelection">
+                        <label class="form-label">Select Project</label>
+                        <select class="form-select" name="project_id" id="projectSelect">
+                            <option value="">Choose project...</option>
+                            <!-- Projects will be loaded via AJAX -->
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3" id="userSelection" style="display: none;">
+                        <label class="form-label">Select User</label>
+                        <select class="form-select" name="user_id" id="userSelect">
+                            <option value="">Choose user...</option>
+                            <!-- Users will be loaded via AJAX -->
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitAssignment()">Assign</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // View mode toggle
+    document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const listView = document.getElementById('listViewContent');
+            const cardView = document.getElementById('cardViewContent');
+            
+            if (this.id === 'listView') {
+                listView.style.display = 'block';
+                cardView.style.display = 'none';
+            } else {
+                listView.style.display = 'none';
+                cardView.style.display = 'block';
+            }
+        });
+    });
+    
+    // Assignment type toggle
+    document.getElementById('assignmentType')?.addEventListener('change', function() {
+        const projectSelection = document.getElementById('projectSelection');
+        const userSelection = document.getElementById('userSelection');
+        
+        if (this.value === 'project') {
+            projectSelection.style.display = 'block';
+            userSelection.style.display = 'none';
+        } else {
+            projectSelection.style.display = 'none';
+            userSelection.style.display = 'block';
+        }
+    });
+});
+
+function assignEquipmentModal(equipmentId) {
+    document.getElementById('assignEquipmentId').value = equipmentId;
+    
+    // Load projects and users
+    loadProjectsForAssignment();
+    loadUsersForAssignment();
+    
+    new bootstrap.Modal(document.getElementById('assignmentModal')).show();
+}
+
+function loadProjectsForAssignment() {
+    fetch('/api/projects/active')
+        .then(response => response.json())
+        .then(projects => {
+            const select = document.getElementById('projectSelect');
+            select.innerHTML = '<option value="">Choose project...</option>';
+            
+            projects.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project.id;
+                option.textContent = project.name;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error loading projects:', error));
+}
+
+function loadUsersForAssignment() {
+    fetch('/api/users/company')
+        .then(response => response.json())
+        .then(users => {
+            const select = document.getElementById('userSelect');
+            select.innerHTML = '<option value="">Choose user...</option>';
+            
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.username;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error loading users:', error));
+}
+
+function submitAssignment() {
+    const form = document.getElementById('assignmentForm');
+    const formData = new FormData(form);
+    
+    fetch('{{ url_for("equipment.assign_equipment") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
+            showToast('Equipment assigned successfully!', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(data.message || 'Assignment failed', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('Assignment failed', 'error');
+    });
+}
+
+function checkInEquipment(equipmentId) {
+    if (confirm('Check in this equipment? It will be marked as available.')) {
+        // Implementation for checking in equipment
+        showToast('Equipment checked in successfully!', 'success');
+        setTimeout(() => location.reload(), 1000);
+    }
+}
+
+function exportEquipment() {
+    alert('Export feature coming soon!');
+}
+
+function showToast(message, type) {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 1060; max-width: 300px;';
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, 5000);
+}
+</script>
+
+<style>
+.equipment-stat-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.equipment-card {
+    transition: transform 0.2s ease;
+}
+
+.equipment-card:hover {
+    transform: translateY(-2px);
+}
+
+.equipment-details {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    
+    .btn-group-sm .btn {
+        padding: 0.25rem 0.5rem;
+    }
+}
+</style>
+{% endblock %}
