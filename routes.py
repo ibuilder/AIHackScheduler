@@ -30,16 +30,38 @@ def dashboard():
     
     # Calculate dashboard statistics
     total_projects = Project.query.filter_by(company_id=current_user.company_id).count()
+    active_projects = Project.query.filter_by(company_id=current_user.company_id, status='active').count()
+    
+    total_tasks = Task.query.join(Project).filter(
+        Project.company_id == current_user.company_id
+    ).count()
+    
     active_tasks = Task.query.join(Project).filter(
         Project.company_id == current_user.company_id,
         Task.status.in_([TaskStatus.NOT_STARTED, TaskStatus.IN_PROGRESS])
     ).count()
     
+    completed_tasks = Task.query.join(Project).filter(
+        Project.company_id == current_user.company_id,
+        Task.status == TaskStatus.COMPLETED
+    ).count()
+    
+    # For now, provide empty/default values for complex chart data
+    project_progress = []
+    status_distribution = []
+    overdue_tasks = 0
+    
     return render_template('reports/dashboard.html',
                          projects=projects,
                          recent_tasks=recent_tasks,
                          total_projects=total_projects,
-                         active_tasks=active_tasks)
+                         active_projects=active_projects,
+                         total_tasks=total_tasks,
+                         active_tasks=active_tasks,
+                         completed_tasks=completed_tasks,
+                         overdue_tasks=overdue_tasks,
+                         project_progress=project_progress,
+                         status_distribution=status_distribution)
 
 @main_bp.route('/health')
 def health_check():
