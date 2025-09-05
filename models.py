@@ -91,6 +91,9 @@ class Company(db.Model):
     powerbi_integrations = relationship("PowerBIIntegration", back_populates="company")
     equipment = relationship("Equipment", back_populates="company")
     suppliers = relationship("Supplier", back_populates="company")
+    transactions = relationship("Transaction", back_populates="company")
+    invoices = relationship("Invoice", back_populates="company")
+    payments = relationship("Payment", back_populates="company")
 
 # Equipment Management Models
 class Equipment(db.Model):
@@ -149,6 +152,7 @@ class Equipment(db.Model):
     current_project = relationship("Project", back_populates="assigned_equipment")
     assigned_to_user = relationship("User", back_populates="assigned_equipment")
     supplier = relationship("Supplier", back_populates="equipment")
+    transactions = relationship("Transaction", back_populates="equipment")
     
     # Unique constraint per company
     __table_args__ = (
@@ -218,6 +222,313 @@ class Supplier(db.Model):
     company = relationship("Company", back_populates="suppliers")
     equipment = relationship("Equipment", back_populates="supplier")
 
+# Financial Management Models
+from decimal import Decimal
+
+class TransactionType(enum.Enum):
+    EXPENSE = "expense"
+    INCOME = "income"
+    TRANSFER = "transfer"
+    ADJUSTMENT = "adjustment"
+
+class PaymentMethod(enum.Enum):
+    CASH = "cash"
+    CHECK = "check"
+    CREDIT_CARD = "credit_card"
+    BANK_TRANSFER = "bank_transfer"
+    ACH = "ach"
+    WIRE_TRANSFER = "wire_transfer"
+
+class PaymentStatus(enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    REFUNDED = "refunded"
+
+class InvoiceStatus(enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    VIEWED = "viewed"
+    PARTIAL = "partial"
+    PAID = "paid"
+    OVERDUE = "overdue"
+    CANCELLED = "cancelled"
+
+class ExpenseCategory(enum.Enum):
+    LABOR = "labor"
+    MATERIALS = "materials"
+    EQUIPMENT = "equipment"
+    SUBCONTRACTOR = "subcontractor"
+    PERMITS = "permits"
+    UTILITIES = "utilities"
+    INSURANCE = "insurance"
+    FUEL = "fuel"
+    MAINTENANCE = "maintenance"
+    OVERHEAD = "overhead"
+    OTHER = "other"
+
+class BudgetCategory(enum.Enum):
+    LABOR = "labor"
+    MATERIALS = "materials"
+    EQUIPMENT = "equipment"
+    SUBCONTRACTORS = "subcontractors"
+    PERMITS_FEES = "permits_fees"
+    UTILITIES = "utilities"
+    INSURANCE = "insurance"
+    CONTINGENCY = "contingency"
+    OVERHEAD = "overhead"
+    PROFIT = "profit"
+
+class Transaction(db.Model):
+    """General ledger transactions for all financial activities"""
+    __tablename__ = 'transactions'
+    
+    id = Column(Integer, primary_key=True)
+    transaction_number = Column(String(50), nullable=False)
+    transaction_type = Column(db.Enum(TransactionType), nullable=False)
+    
+    # Amount and currency
+    amount = Column(db.Numeric(15, 2), nullable=False)
+    currency = Column(String(3), default='USD')
+    
+    # Transaction details
+    description = Column(Text, nullable=False)
+    transaction_date = Column(Date, nullable=False)
+    reference_number = Column(String(100))
+    
+    # Categorization
+    expense_category = Column(db.Enum(ExpenseCategory))
+    
+    # Project association
+    project_id = Column(Integer, ForeignKey('projects.id'))
+    task_id = Column(Integer, ForeignKey('tasks.id'))
+    
+    # Equipment association (for equipment-related costs)
+    equipment_id = Column(Integer, ForeignKey('equipment.id'))
+    
+    # Payment information
+    payment_method = Column(db.Enum(PaymentMethod))
+    payment_reference = Column(String(200))
+    
+    # Vendor/Customer information
+    vendor_customer_name = Column(String(200))
+    
+    # Document attachments
+    receipt_url = Column(String(500))
+    invoice_url = Column(String(500))
+    supporting_documents = Column(JSON)
+    
+    # Approval workflow
+    requires_approval = Column(Boolean, default=False)
+    approved_by_id = Column(Integer, ForeignKey('users.id'))
+    approved_at = Column(DateTime)
+    approval_notes = Column(Text)
+    
+    # Company and audit
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    created_by_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    company = relationship("Company", back_populates="transactions")
+    project = relationship("Project", back_populates="transactions")
+    task = relationship("Task", back_populates="transactions")
+    equipment = relationship("Equipment", back_populates="transactions")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+    
+    # Indexes for performance
+    __table_args__ = (
+        db.UniqueConstraint('company_id', 'transaction_number', name='uq_transaction_number_per_company'),
+        db.Index('ix_transactions_company_date', 'company_id', 'transaction_date'),
+        db.Index('ix_transactions_project_date', 'project_id', 'transaction_date'),
+        db.Index('ix_transactions_category', 'company_id', 'expense_category'),
+    )
+
+class ProjectBudget(db.Model):
+    """Project budget tracking with categories"""
+    __tablename__ = 'project_budgets'
+    
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    
+    # Budget details
+    budget_category = Column(db.Enum(BudgetCategory), nullable=False)
+    budgeted_amount = Column(db.Numeric(15, 2), nullable=False)
+    revised_amount = Column(db.Numeric(15, 2))
+    
+    # Tracking
+    committed_amount = Column(db.Numeric(15, 2), default=0)
+    actual_amount = Column(db.Numeric(15, 2), default=0)
+    
+    # Metadata
+    description = Column(Text)
+    notes = Column(Text)
+    
+    # Versioning for budget revisions
+    version = Column(Integer, default=1)
+    is_current = Column(Boolean, default=True)
+    
+    # Audit fields
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_by_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    
+    # Relationships
+    project = relationship("Project", back_populates="budgets")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('project_id', 'budget_category', 'version', name='uq_project_budget_category_version'),
+        db.Index('ix_project_budgets_current', 'project_id', 'is_current'),
+    )
+
+class Invoice(db.Model):
+    """Invoice management for billing clients"""
+    __tablename__ = 'invoices'
+    
+    id = Column(Integer, primary_key=True)
+    invoice_number = Column(String(50), nullable=False)
+    
+    # Client information
+    client_name = Column(String(200), nullable=False)
+    client_email = Column(String(200))
+    client_address = Column(Text)
+    
+    # Invoice details
+    issue_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=False)
+    
+    # Amounts
+    subtotal = Column(db.Numeric(15, 2), nullable=False)
+    tax_rate = Column(db.Numeric(5, 4), default=0)
+    tax_amount = Column(db.Numeric(15, 2), default=0)
+    discount_amount = Column(db.Numeric(15, 2), default=0)
+    total_amount = Column(db.Numeric(15, 2), nullable=False)
+    
+    # Payment tracking
+    paid_amount = Column(db.Numeric(15, 2), default=0)
+    status = Column(db.Enum(InvoiceStatus), nullable=False, default=InvoiceStatus.DRAFT)
+    
+    # Project association
+    project_id = Column(Integer, ForeignKey('projects.id'))
+    
+    # Terms and notes
+    payment_terms = Column(String(100))
+    notes = Column(Text)
+    internal_notes = Column(Text)
+    
+    # Document generation
+    pdf_url = Column(String(500))
+    sent_at = Column(DateTime)
+    viewed_at = Column(DateTime)
+    
+    # Stripe integration
+    stripe_invoice_id = Column(String(100))
+    stripe_payment_intent_id = Column(String(100))
+    
+    # Company and audit
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    created_by_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    company = relationship("Company", back_populates="invoices")
+    project = relationship("Project", back_populates="invoices")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    invoice_items = relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="invoice")
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('company_id', 'invoice_number', name='uq_invoice_number_per_company'),
+        db.Index('ix_invoices_company_status', 'company_id', 'status'),
+        db.Index('ix_invoices_due_date', 'due_date'),
+    )
+
+class InvoiceItem(db.Model):
+    """Individual line items for invoices"""
+    __tablename__ = 'invoice_items'
+    
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey('invoices.id'), nullable=False)
+    
+    # Item details
+    description = Column(Text, nullable=False)
+    quantity = Column(db.Numeric(10, 2), nullable=False, default=1)
+    unit_price = Column(db.Numeric(15, 2), nullable=False)
+    line_total = Column(db.Numeric(15, 2), nullable=False)
+    
+    # Optional categorization
+    item_category = Column(String(100))
+    
+    # Task/project reference
+    task_id = Column(Integer, ForeignKey('tasks.id'))
+    
+    # Audit
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    invoice = relationship("Invoice", back_populates="invoice_items")
+    task = relationship("Task")
+
+class Payment(db.Model):
+    """Payment records for invoices and general payments"""
+    __tablename__ = 'payments'
+    
+    id = Column(Integer, primary_key=True)
+    payment_number = Column(String(50), nullable=False)
+    
+    # Payment details
+    amount = Column(db.Numeric(15, 2), nullable=False)
+    currency = Column(String(3), default='USD')
+    payment_date = Column(Date, nullable=False)
+    payment_method = Column(db.Enum(PaymentMethod), nullable=False)
+    
+    # Status and processing
+    status = Column(db.Enum(PaymentStatus), nullable=False, default=PaymentStatus.PENDING)
+    reference_number = Column(String(200))
+    
+    # Invoice association (optional - for invoice payments)
+    invoice_id = Column(Integer, ForeignKey('invoices.id'))
+    
+    # Customer/payer information
+    payer_name = Column(String(200))
+    payer_email = Column(String(200))
+    
+    # Payment processor integration
+    stripe_payment_id = Column(String(100))
+    processor_fee = Column(db.Numeric(10, 2))
+    net_amount = Column(db.Numeric(15, 2))
+    
+    # Notes and metadata
+    description = Column(Text)
+    internal_notes = Column(Text)
+    failure_reason = Column(Text)
+    
+    # Company and audit
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    processed_by_id = Column(Integer, ForeignKey('users.id'))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    company = relationship("Company", back_populates="payments")
+    invoice = relationship("Invoice", back_populates="payments")
+    processed_by = relationship("User", foreign_keys=[processed_by_id])
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('company_id', 'payment_number', name='uq_payment_number_per_company'),
+        db.Index('ix_payments_company_status', 'company_id', 'status'),
+        db.Index('ix_payments_date', 'payment_date'),
+    )
+
 class Project(db.Model):
     __tablename__ = 'projects'
     
@@ -244,6 +555,9 @@ class Project(db.Model):
     assigned_equipment = relationship("Equipment", back_populates="current_project")
     tasks = relationship("Task", back_populates="project", cascade="all, delete-orphan")
     resources = relationship("Resource", back_populates="project", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="project")
+    budgets = relationship("ProjectBudget", back_populates="project", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="project")
 
 class Task(db.Model):
     __tablename__ = 'tasks'
@@ -275,6 +589,7 @@ class Task(db.Model):
     subtasks = relationship("Task", overlaps="parent_task")
     dependencies = relationship("TaskDependency", foreign_keys="TaskDependency.task_id")
     resource_assignments = relationship("ResourceAssignment", back_populates="task")
+    transactions = relationship("Transaction", back_populates="task")
 
 class TaskDependency(db.Model):
     __tablename__ = 'task_dependencies'

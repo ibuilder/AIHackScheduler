@@ -154,6 +154,7 @@ def create_app(config_class=None):
     from reports.executive_dashboard import executive_bp
     from azure_ai.predictive_analytics import azure_ai_bp
     from blueprints.equipment_management import equipment_bp
+    from blueprints.financial_management import financial_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(projects_bp, url_prefix='/projects')
@@ -170,6 +171,7 @@ def create_app(config_class=None):
     app.register_blueprint(executive_bp, url_prefix='/')
     app.register_blueprint(azure_ai_bp, url_prefix='/api')
     app.register_blueprint(equipment_bp, url_prefix='/')
+    app.register_blueprint(financial_bp, url_prefix='/')
     
     # Register main routes
     from routes import main_bp
