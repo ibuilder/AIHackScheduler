@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BBSchedule — construction scheduling you can verify</title>
+<meta name="description" content="A CPM engine with topologically ordered passes, all four relationship types, and DCMA 14-point schedule quality scoring. Try the live demo.">
+<meta property="og:title" content="BBSchedule — construction scheduling you can verify">
+<meta property="og:description" content="A critical path you can check, and a score that says whether to trust it. Repair a real schedule in the browser and watch the DCMA grade move.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23EAEBE6'/><rect x='2' y='3' width='9' height='2.5' fill='%23CC4B1F'/><rect x='4' y='6.75' width='7' height='2.5' fill='%237E959F'/><rect x='6' y='10.5' width='8' height='2.5' fill='%23CC4B1F'/></svg>">
+
+<style>
+:root {
+  --paper:      #EAEBE6;
+  --surface:    #F7F8F4;
+  --surface-2:  #E1E3DC;
+  --ink:        #191C18;
+  --ink-soft:   #5C6159;
+  --ink-faint:  #878C82;
+  --rule:       #C9CCC3;
+  --rule-soft:  #DCDED6;
+  --critical:   #CC4B1F;
+  --critical-w: #F0DBD1;
+  --slack:      #7E959F;
+  --slack-w:    #D8E0E3;
+  --pass:       #2E6B4E;
+  --fail:       #A33526;
+  --skip:       #8B9086;
+  --pass-bg:    #DEEBE2;
+  --fail-bg:    #F3DDD8;
+  --skip-bg:    #E2E4DE;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --measure: 63ch;
+  --gutter: clamp(1.15rem, 4vw, 2.5rem);
+  --maxw: 1180px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:      #15181A;
+    --surface:    #1D2124;
+    --surface-2:  #262B2E;
+    --ink:        #E8EAE5;
+    --ink-soft:   #9DA49D;
+    --ink-faint:  #717873;
+    --rule:       #333A3D;
+    --rule-soft:  #2A3033;
+    --critical:   #F26A38;
+    --critical-w: #4A2517;
+    --slack:      #7C97A3;
+    --slack-w:    #2A3B42;
+    --pass:       #6BBE91;
+    --fail:       #ED8168;
+    --skip:       #8B928C;
+    --pass-bg:    #1C3529;
+    --fail-bg:    #3A211B;
+    --skip-bg:    #262B28;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:#15181A; --surface:#1D2124; --surface-2:#262B2E;
+  --ink:#E8EAE5; --ink-soft:#9DA49D; --ink-faint:#717873;
+  --rule:#333A3D; --rule-soft:#2A3033;
+  --critical:#F26A38; --critical-w:#4A2517; --slack:#7C97A3; --slack-w:#2A3B42;
+  --pass:#6BBE91; --fail:#ED8168; --skip:#8B928C;
+  --pass-bg:#1C3529; --fail-bg:#3A211B; --skip-bg:#262B28;
+}
+:root[data-theme="light"] {
+  --paper:#EAEBE6; --surface:#F7F8F4; --surface-2:#E1E3DC;
+  --ink:#191C18; --ink-soft:#5C6159; --ink-faint:#878C82;
+  --rule:#C9CCC3; --rule-soft:#DCDED6;
+  --critical:#CC4B1F; --critical-w:#F0DBD1; --slack:#7E959F; --slack-w:#D8E0E3;
+  --pass:#2E6B4E; --fail:#A33526; --skip:#8B9086;
+  --pass-bg:#DEEBE2; --fail-bg:#F3DDD8; --skip-bg:#E2E4DE;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+h1, h2, h3 {
+  font-weight: 800;
+  letter-spacing: -0.022em;
+  line-height: 1.14;
+  text-wrap: balance;
+  margin: 0;
+}
+h1 { font-size: clamp(2.1rem, 5.4vw, 3.5rem); }
+h2 { font-size: clamp(1.4rem, 3vw, 1.85rem); }
+h3 { font-size: 1.02rem; letter-spacing: -0.01em; }
+
+p { margin: 0; max-width: var(--measure); }
+a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-color: var(--critical); }
+
+:focus-visible {
+  outline: 2px solid var(--critical);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+/* ── masthead ───────────────────────────────────────────────── */
+
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  padding-block: clamp(2.5rem, 7vw, 4.5rem) clamp(2rem, 5vw, 3rem);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(100% / 24 - 1px),
+      var(--rule-soft) calc(100% / 24 - 1px) calc(100% / 24)
+    );
+}
+.masthead > .wrap { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+.wordmark strong {
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.wordmark .rev {
+  margin-left: auto;
+  color: var(--ink-faint);
+}
+
+.lede { font-size: clamp(1.02rem, 1.9vw, 1.16rem); color: var(--ink-soft); }
+.lede strong { color: var(--ink); font-weight: 600; }
+
+.install {
+  font-family: var(--mono);
+  font-size: 0.83rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--critical);
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--ink);
+  max-width: 100%;
+}
+
+.links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; font-family: var(--mono); font-size: 0.8rem; }
+.links a { color: var(--ink-soft); }
+
+/* ── sections ───────────────────────────────────────────────── */
+
+section { padding-block: clamp(2.75rem, 6vw, 4.25rem); }
+section + section { border-top: 1px solid var(--rule); }
+
+.section-head { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 2rem; }
+
+/* ── the tool ───────────────────────────────────────────────── */
+
+.tool {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 960px) { .tool { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.95rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.panel-body { padding: 0.95rem; }
+
+/* headline figures */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--rule);
+}
+.figure { padding: 0.85rem 0.95rem; border-right: 1px solid var(--rule-soft); }
+.figure:last-child { border-right: 0; }
+.figure dt {
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 0.25rem;
+}
+.figure dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.32rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  transition: color 140ms ease;
+}
+.figure dd small { font-size: 0.68rem; font-weight: 400; color: var(--ink-faint); letter-spacing: 0; }
+
+.grade-A, .grade-B { color: var(--pass); }
+.grade-C { color: var(--ink); }
+.grade-D, .grade-F { color: var(--fail); }
+
+/* gantt */
+.chart { display: flex; flex-direction: column; gap: 2px; }
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 12.2rem) minmax(0, 1fr);
+  grid-template-areas: "name track";
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+.row-name {
+  grid-area: name;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-name b { font-weight: 400; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.row.is-critical .row-name { color: var(--ink); }
+.row.is-critical .row-name b { color: var(--critical); }
+.row-track { grid-area: track; position: relative; height: 15px; background: var(--surface-2); }
+
+/* Narrow: the name gets its own line so the track keeps full width. */
+@media (max-width: 700px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "track";
+    row-gap: 0.15rem;
+    margin-bottom: 0.4rem;
+  }
+}
+
+.bar {
+  position: absolute;
+  top: 0;
+  height: 15px;
+  transition: left 320ms cubic-bezier(.4,0,.2,1), width 320ms cubic-bezier(.4,0,.2,1);
+}
+.bar-work { background: var(--slack); }
+.bar-work.is-critical { background: var(--critical); }
+.bar-float {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--slack-w) 0 3px,
+    transparent 3px 6px
+  );
+  border-top: 1px solid var(--slack-w);
+  border-bottom: 1px solid var(--slack-w);
+}
+.bar-tf {
+  position: absolute;
+  top: 0;
+  height: 15px;
+  display: flex;
+  align-items: center;
+  padding-left: 0.3rem;
+  white-space: nowrap;
+  font-size: 0.6rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transition: left 320ms cubic-bezier(.4,0,.2,1);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.15rem;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule-soft);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+.swatch { display: inline-flex; align-items: center; gap: 0.4rem; }
+.swatch i { width: 15px; height: 9px; display: inline-block; }
+.swatch i.c { background: var(--critical); }
+.swatch i.s { background: var(--slack); }
+.swatch i.f {
+  background: repeating-linear-gradient(-45deg, var(--slack-w) 0 3px, transparent 3px 6px);
+  border-block: 1px solid var(--slack-w);
+}
+
+/* scorecard */
+.checks { display: flex; flex-direction: column; }
+.check {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.79rem;
+}
+.check:last-child { border-bottom: 0; }
+.check-n {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.check-name { line-height: 1.35; }
+.check-detail {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+  margin-top: 0.1rem;
+}
+.chip {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.13rem 0.42rem;
+  white-space: nowrap;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.chip.pass { background: var(--pass-bg); color: var(--pass); }
+.chip.fail { background: var(--fail-bg); color: var(--fail); }
+.chip.skip { background: var(--skip-bg); color: var(--skip); }
+
+/* repairs */
+.repairs { display: flex; flex-direction: column; gap: 0; }
+.repair {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+}
+.repair:last-child { border-bottom: 0; }
+.repair input { margin: 0.28rem 0 0; accent-color: var(--critical); width: 15px; height: 15px; cursor: pointer; }
+.repair-label { font-size: 0.85rem; font-weight: 600; line-height: 1.4; }
+.repair-note {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  margin-top: 0.12rem;
+  max-width: none;
+}
+.repair-fixes {
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+  margin-top: 0.2rem;
+  display: block;
+}
+
+.verdict {
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  background: var(--surface-2);
+  border-left: 3px solid var(--critical);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  max-width: none;
+}
+
+/* ── prose blocks ───────────────────────────────────────────── */
+
+.cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: 1.5rem 2.25rem;
+}
+.col { display: flex; flex-direction: column; gap: 0.55rem; }
+.col p { font-size: 0.9rem; color: var(--ink-soft); }
+.col h3 { display: flex; align-items: baseline; gap: 0.55rem; }
+.col h3 span {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--critical);
+  letter-spacing: 0.08em;
+}
+
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.table-scroll { overflow-x: auto; }
+th, td { text-align: left; padding: 0.55rem 0.8rem 0.55rem 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+th {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 400;
+  border-bottom-color: var(--rule);
+}
+td code, .mono { font-family: var(--mono); font-size: 0.79rem; }
+td:first-child { white-space: nowrap; }
+
+pre {
+  font-family: var(--mono);
+  font-size: 0.79rem;
+  line-height: 1.6;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  margin: 0;
+}
+.tok-c { color: var(--ink-faint); }
+.tok-k { color: var(--critical); }
+
+.status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.25rem; }
+.status {
+  border-top: 2px solid var(--rule);
+  padding-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.status.solid { border-top-color: var(--pass); }
+.status.thin  { border-top-color: var(--slack); }
+.status.facade { border-top-color: var(--fail); }
+.status h3 { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.1em; font-family: var(--mono); font-weight: 400; }
+.status ul { margin: 0; padding-left: 1.05rem; font-size: 0.85rem; color: var(--ink-soft); }
+.status li { margin-bottom: 0.25rem; }
+
+ol.roadmap { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.6rem; }
+ol.roadmap li { font-size: 0.9rem; }
+ol.roadmap strong { font-weight: 600; }
+ol.roadmap span { color: var(--ink-soft); }
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding-block: 2rem 3rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+footer .wrap { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: baseline; }
+footer a { color: var(--ink-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="wordmark">
+      <strong>BBSchedule</strong>
+      <span>construction scheduling engine</span>
+      <span class="rev">rev 0.3.0</span>
+    </div>
+    <h1>A critical path you can check, and a score that says whether to trust it.</h1>
+    <p class="lede">
+      Most scheduling tools assume the schedule they are handed is sound. Most are not.
+      BBSchedule computes the critical path properly — topologically ordered passes, all four
+      relationship types, total and free float — then grades the network against the
+      <strong>DCMA 14-point assessment</strong> and refuses to optimise one that fails.
+    </p>
+    <div class="install">git clone https://github.com/ibuilder/AIHackScheduler.git &amp;&amp; cd AIHackScheduler
+pip install -r requirements.txt
+flask --app app init-db &amp;&amp; flask --app app seed-demo &amp;&amp; flask --app app run</div>
+    <nav class="links">
+      <a href="https://github.com/ibuilder/AIHackScheduler">Source</a>
+      <a href="#demo">Live demo</a>
+      <a href="#engine">Engine</a>
+      <a href="#api">API</a>
+      <a href="https://github.com/ibuilder/AIHackScheduler/blob/main/PLAN.md">Assessment &amp; plan</a>
+    </nav>
+  </div>
+</header>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Live — computed in your browser</p>
+      <h2>Repair a real schedule and watch the grade move</h2>
+      <p>
+        This is the demo project shipped with the repository: a 25-activity commercial fit-out,
+        deliberately built with the defects real schedules carry. Tick a repair and the forward
+        and backward passes rerun, float redistributes, and the assessment updates. Nothing is
+        precomputed.
+      </p>
+    </div>
+
+    <div class="tool">
+      <div class="panel">
+        <div class="panel-head">Northgate Tower — commercial fit-out</div>
+        <dl class="figures">
+          <div class="figure">
+            <dt>Duration</dt>
+            <dd id="fig-duration">—<small> wd</small></dd>
+          </div>
+          <div class="figure">
+            <dt>Critical activities</dt>
+            <dd id="fig-critical">—<small> of 25</small></dd>
+          </div>
+          <div class="figure">
+            <dt>Schedule grade</dt>
+            <dd id="fig-grade">—<small id="fig-score"></small></dd>
+          </div>
+        </dl>
+        <div class="panel-body">
+          <div class="chart" id="chart"></div>
+          <div class="legend">
+            <span class="swatch"><i class="c"></i> critical path</span>
+            <span class="swatch"><i class="s"></i> activity duration</span>
+            <span class="swatch"><i class="f"></i> total float, in working days</span>
+            <span>horizontal axis: working days from the data date</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:1.25rem;">
+        <div class="panel">
+          <div class="panel-head">Repairs</div>
+          <div class="panel-body">
+            <div class="repairs" id="repairs"></div>
+            <p class="verdict" id="verdict"></p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">DCMA 14-point assessment</div>
+          <div class="panel-body">
+            <div class="checks" id="checks"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="engine">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">core/ — pure Python, no Flask, no database</p>
+      <h2>What the engine actually does</h2>
+    </div>
+    <div class="cols">
+      <div class="col">
+        <h3><span>01</span> Ordered passes</h3>
+        <p>
+          The forward and backward passes run in topological order. The implementation this
+          replaced walked activities in list order, so a predecessor declared after its successor
+          was read before it had been computed — and the critical path silently depended on
+          database row ordering.
+        </p>
+      </div>
+      <div class="col">
+        <h3><span>02</span> All four tie types</h3>
+        <p>
+          Finish-to-Start, Start-to-Start, Finish-to-Finish and Start-to-Finish, each with
+          positive lag or negative lead. Overlapping work is modelled as overlapping, not
+          flattened into a sequence.
+        </p>
+      </div>
+      <div class="col">
+        <h3><span>03</span> Two kinds of float</h3>
+        <p>
+          Total float is how far an activity can slip before the project moves. Free float is how
+          far it can slip before <em>any</em> successor moves. They differ, they mean different
+          things on site, and both are computed.
+        </p>
+      </div>
+      <div class="col">
+        <h3><span>04</span> Cycles named, not swallowed</h3>
+        <p>
+          A circular dependency raises an error identifying the specific loop, rather than
+          producing a plausible-looking schedule built on infinite float.
+        </p>
+      </div>
+      <div class="col">
+        <h3><span>05</span> Working calendars</h3>
+        <p>
+          Configurable working weekdays and holidays. Finish dates are the last day worked — a
+          five-day activity starting Monday finishes Friday, which is how planners read it.
+        </p>
+      </div>
+      <div class="col">
+        <h3><span>06</span> Honest abstention</h3>
+        <p>
+          Four DCMA checks need recorded baseline and actual dates the schema does not yet hold.
+          They report as <span class="mono">skipped</span> with a reason and are excluded from
+          the score — never passed vacuously.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="ai">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Positioning</p>
+      <h2>The model interprets. It does not calculate.</h2>
+    </div>
+    <p style="margin-bottom:1.25rem;">
+      Handing a language model a list of task rows and asking for "critical path analysis" invites
+      it to invent one. Here, schedule analysis and forecasting run CPM and the quality assessment
+      <em>first</em>, then pass the results into the prompt as given facts. The system prompt
+      forbids claiming a saving on an activity that is not on the critical path, and the optimiser
+      refuses to run at all against a network whose logic fails the blocking checks.
+    </p>
+    <p>
+      Optimising an unsound schedule produces confident nonsense. Treating the deterministic engine
+      as the product — and the model as a presentation layer over it — is the difference between AI
+      that helps and AI that launders guesswork.
+    </p>
+  </div>
+</section>
+
+<section id="api">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">HTTP</p>
+      <h2>API</h2>
+      <p>
+        Every endpoint is company-scoped. A request for another tenant's project is
+        byte-for-byte indistinguishable from a request for one that does not exist.
+      </p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Endpoint</th><th>Returns</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /api/schedule/projects/&lt;id&gt;/cpm</code></td>
+            <td>Every activity with early and late dates, total float, free float, criticality</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/schedule/projects/&lt;id&gt;/health</code></td>
+            <td>DCMA 14-point assessment, grade, and the offending activities per check</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/schedule/projects/&lt;id&gt;/critical-path</code></td>
+            <td>The driving path only, for chart overlays</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:2rem; margin-bottom:0.75rem;">Or use the engine directly</h3>
+<pre><span class="tok-k">from</span> core <span class="tok-k">import</span> Activity, Relationship, RelationType, calculate_cpm, assess_schedule
+
+activities = [
+    Activity(<span class="tok-c">"A"</span>, <span class="tok-c">"Excavate"</span>, 5),
+    Activity(<span class="tok-c">"B"</span>, <span class="tok-c">"Pour footings"</span>, 8),
+    Activity(<span class="tok-c">"C"</span>, <span class="tok-c">"Cure"</span>, 7),
+]
+links = [
+    Relationship(<span class="tok-c">"A"</span>, <span class="tok-c">"B"</span>),
+    Relationship(<span class="tok-c">"B"</span>, <span class="tok-c">"C"</span>, RelationType.FS, lag=2),
+]
+
+result = calculate_cpm(activities, links)
+result.project_duration              <span class="tok-c"># 22</span>
+result.critical_path                 <span class="tok-c"># ['A', 'B', 'C']</span>
+result.activities[<span class="tok-c">"B"</span>].total_float   <span class="tok-c"># 0</span>
+
+report = assess_schedule(activities, links)
+report.grade, report.is_optimisable</pre>
+  </div>
+</section>
+
+<section id="status">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Where it stands</p>
+      <h2>Working software with a solid core and an unfinished perimeter</h2>
+      <p>Being specific about which is which matters more than claiming everything works.</p>
+    </div>
+    <div class="status-grid">
+      <div class="status solid">
+        <h3>Solid</h3>
+        <ul>
+          <li>CPM engine, 70 tests on hand-checked networks</li>
+          <li>DCMA 14-point assessment</li>
+          <li>Working calendars</li>
+          <li>Multi-tenant isolation</li>
+          <li>Schedule analysis API</li>
+        </ul>
+      </div>
+      <div class="status thin">
+        <h3>Working, thin</h3>
+        <ul>
+          <li>Project and task management</li>
+          <li>Gantt, linear and pull-planning views</li>
+          <li>Authentication and roles</li>
+        </ul>
+      </div>
+      <div class="status facade">
+        <h3>Facade — to build or remove</h3>
+        <ul>
+          <li>Equipment maintenance and utilisation return placeholder values</li>
+          <li>Payment processing is unimplemented</li>
+          <li><span class="mono">predictive_analytics.py</span> returns hardcoded numbers</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="margin-top:2.5rem; margin-bottom:1rem;">Next, in order</h3>
+    <ol class="roadmap">
+      <li><strong>Baseline and actual dates on <span class="mono">Task</span></strong> —
+        <span>unlocks DCMA checks 9, 11 and 14, plus Baseline Execution Index and schedule variance.
+        The highest-value change remaining.</span></li>
+      <li><strong>Schedule quality in the UI</strong> —
+        <span>grade badges, drill-down to the offending activities, trend across submissions.</span></li>
+      <li><strong>Primavera <span class="mono">.xer</span> and MS Project import</strong> —
+        <span>nothing serious enters a scheduling tool through a web form.</span></li>
+      <li><strong>Monte Carlo risk analysis</strong> —
+        <span>P50/P80 completion dates and a criticality index per activity, over the engine that
+        already exists.</span></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>BBSchedule 0.3.0</span>
+    <a href="https://github.com/ibuilder/AIHackScheduler">github.com/ibuilder/AIHackScheduler</a>
+    <a href="https://www.planacademy.com/dcma-14-point-schedule-assessment/">DCMA 14-point reference</a>
+    <span>Licence unsettled — see PLAN.md item 9</span>
+  </div>
+</footer>
+
+<script>
+"use strict";
+
+/* ─────────────────────────────────────────────────────────────
+   CPM engine — a direct port of core/cpm.py.
+   Working-day offsets throughout; offset 0 is the data date.
+   ───────────────────────────────────────────────────────────── */
+
+const FS = "FS", SS = "SS", FF = "FF", SF = "SF";
+
+function topologicalOrder(ids, rels) {
+  const succ = new Map(ids.map(id => [id, []]));
+  const indeg = new Map(ids.map(id => [id, 0]));
+  for (const r of rels) {
+    succ.get(r.p).push(r.s);
+    indeg.set(r.s, indeg.get(r.s) + 1);
+  }
+  const ready = ids.filter(id => indeg.get(id) === 0);
+  const order = [];
+  while (ready.length) {
+    const cur = ready.shift();
+    order.push(cur);
+    for (const s of succ.get(cur)) {
+      indeg.set(s, indeg.get(s) - 1);
+      if (indeg.get(s) === 0) ready.push(s);
+    }
+  }
+  if (order.length !== ids.length) throw new Error("Circular dependency in schedule logic");
+  return order;
+}
+
+function calculateCpm(activities, rels) {
+  const byId = new Map(activities.map(a => [a.id, a]));
+  const ids = activities.map(a => a.id);
+  const order = topologicalOrder(ids, rels);
+
+  const preds = new Map(ids.map(id => [id, []]));
+  const succs = new Map(ids.map(id => [id, []]));
+  for (const r of rels) { preds.get(r.s).push(r); succs.get(r.p).push(r); }
+
+  const es = new Map(), ef = new Map();
+  for (const id of order) {
+    const a = byId.get(id);
+    let earliest = 0;
+    for (const r of preds.get(id)) {
+      const pes = es.get(r.p), pef = ef.get(r.p);
+      if (r.t === FS)      earliest = Math.max(earliest, pef + r.lag);
+      else if (r.t === SS) earliest = Math.max(earliest, pes + r.lag);
+      else if (r.t === FF) earliest = Math.max(earliest, pef + r.lag - a.duration);
+      else                 earliest = Math.max(earliest, pes + r.lag - a.duration);
+    }
+    if (a.constraintStart != null) earliest = Math.max(earliest, a.constraintStart);
+    es.set(id, earliest);
+    ef.set(id, earliest + a.duration);
+  }
+
+  const duration = Math.max(...ef.values());
+  const ls = new Map(), lf = new Map();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i], a = byId.get(id);
+    let latestFinish = duration;
+    for (const r of succs.get(id)) {
+      const sls = ls.get(r.s), slf = lf.get(r.s);
+      if (r.t === FS)      latestFinish = Math.min(latestFinish, sls - r.lag);
+      else if (r.t === SS) latestFinish = Math.min(latestFinish, sls - r.lag + a.duration);
+      else if (r.t === FF) latestFinish = Math.min(latestFinish, slf - r.lag);
+      else                 latestFinish = Math.min(latestFinish, slf - r.lag + a.duration);
+    }
+    lf.set(id, latestFinish);
+    ls.set(id, latestFinish - a.duration);
+  }
+
+  const results = new Map();
+  for (const id of ids) {
+    const a = byId.get(id);
+    const totalFloat = ls.get(id) - es.get(id);
+    let freeFloat;
+    if (succs.get(id).length) {
+      freeFloat = Math.min(...succs.get(id).map(r => {
+        const ses = es.get(r.s), sef = ef.get(r.s);
+        if (r.t === FS) return ses - r.lag - ef.get(id);
+        if (r.t === SS) return ses - r.lag - es.get(id);
+        if (r.t === FF) return sef - r.lag - ef.get(id);
+        return sef - r.lag - es.get(id);
+      }));
+    } else {
+      freeFloat = duration - ef.get(id);
+    }
+    results.set(id, {
+      id, name: a.name, duration: a.duration,
+      earlyStart: es.get(id), earlyFinish: ef.get(id),
+      lateStart: ls.get(id), lateFinish: lf.get(id),
+      totalFloat, freeFloat, isCritical: totalFloat <= 0
+    });
+  }
+
+  const criticalPath = ids
+    .filter(id => results.get(id).isCritical)
+    .sort((a, b) => results.get(a).earlyStart - results.get(b).earlyStart || (a < b ? -1 : 1));
+
+  return { activities: results, duration, criticalPath };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DCMA 14-point assessment — a port of core/schedule_health.py.
+   ───────────────────────────────────────────────────────────── */
+
+const HIGH_FLOAT_DAYS = 44, HIGH_DURATION_DAYS = 44;
+
+function assessSchedule(activities, rels, result, resourcedIds) {
+  const n = activities.length, nRel = rels.length;
+  const ids = activities.map(a => a.id);
+  const checks = [];
+  const pct = (num, den) => den === 0 ? 0 : num / den;
+  const add = (number, name, passed, value, threshold, detail, offenders = []) =>
+    checks.push({ number, name, passed, value, threshold, detail, offenders });
+
+  const hasPred = new Set(rels.map(r => r.s));
+  const hasSucc = new Set(rels.map(r => r.p));
+  const openStarts = ids.filter(id => !hasPred.has(id));
+  const openFinishes = ids.filter(id => !hasSucc.has(id));
+
+  const exempt = new Set();
+  if (openStarts.length) {
+    exempt.add(openStarts.reduce((best, id) =>
+      result.activities.get(id).earlyStart < result.activities.get(best).earlyStart ? id : best));
+  }
+  if (openFinishes.length) {
+    exempt.add(openFinishes.reduce((best, id) =>
+      result.activities.get(id).earlyFinish > result.activities.get(best).earlyFinish ? id : best));
+  }
+  const dangling = [...new Set(
+    [...openStarts, ...openFinishes].filter(id => !exempt.has(id))
+      .concat(ids.filter(id => !hasPred.has(id) && !hasSucc.has(id)))
+  )].sort();
+  add(1, "Logic", pct(dangling.length, n) <= 0.05, +(pct(dangling.length, n) * 100).toFixed(1),
+      "≤ 5% missing predecessor or successor",
+      `${dangling.length} of ${n} activities are dangling`, dangling);
+
+  const leads = rels.filter(r => r.lag < 0);
+  add(2, "Leads", leads.length === 0, +(pct(leads.length, nRel) * 100).toFixed(1), "0% negative lag",
+      `${leads.length} relationship${leads.length === 1 ? "" : "s"} use a lead; leads hide true logic`,
+      leads.map(r => `${r.p}→${r.s}`));
+
+  const lags = rels.filter(r => r.lag > 0);
+  add(3, "Lags", pct(lags.length, nRel) <= 0.05, +(pct(lags.length, nRel) * 100).toFixed(1),
+      "≤ 5% of relationships",
+      `${lags.length} of ${nRel} relationships carry a lag`, lags.map(r => `${r.p}→${r.s}`));
+
+  const fs = rels.filter(r => r.t === FS);
+  add(4, "Relationship Types", nRel === 0 || pct(fs.length, nRel) >= 0.90,
+      +(pct(fs.length, nRel) * 100).toFixed(1), "≥ 90% Finish-to-Start",
+      `${fs.length} of ${nRel} relationships are FS`,
+      rels.filter(r => r.t !== FS).map(r => `${r.p}→${r.s} (${r.t})`));
+
+  const constrained = activities.filter(a => a.constraintStart != null).map(a => a.id);
+  add(5, "Hard Constraints", pct(constrained.length, n) <= 0.05,
+      +(pct(constrained.length, n) * 100).toFixed(1), "≤ 5% of activities",
+      `${constrained.length} activit${constrained.length === 1 ? "y is" : "ies are"} pinned by a date constraint`,
+      constrained);
+
+  const highFloat = [...result.activities.values()].filter(a => a.totalFloat > HIGH_FLOAT_DAYS).map(a => a.id);
+  add(6, "High Float", pct(highFloat.length, n) <= 0.05, +(pct(highFloat.length, n) * 100).toFixed(1),
+      `≤ 5% above ${HIGH_FLOAT_DAYS} days total float`,
+      `${highFloat.length} activities carry more than ${HIGH_FLOAT_DAYS} days of float`, highFloat);
+
+  const negFloat = [...result.activities.values()].filter(a => a.totalFloat < 0).map(a => a.id);
+  add(7, "Negative Float", negFloat.length === 0, +(pct(negFloat.length, n) * 100).toFixed(1),
+      "0% below zero total float",
+      `${negFloat.length} activities cannot meet their required dates`, negFloat);
+
+  const longTasks = activities.filter(a => a.duration > HIGH_DURATION_DAYS).map(a => a.id);
+  add(8, "High Duration", pct(longTasks.length, n) <= 0.05, +(pct(longTasks.length, n) * 100).toFixed(1),
+      `≤ 5% longer than ${HIGH_DURATION_DAYS} days`,
+      `${longTasks.length} activit${longTasks.length === 1 ? "y runs" : "ies run"} longer than a reporting quarter`,
+      longTasks);
+
+  add(9, "Invalid Dates", null, null, "0% actuals in the future",
+      "Skipped: the schema records no actual finish dates");
+
+  const resourced = new Set(resourcedIds);
+  const working = activities.filter(a => a.duration > 0);
+  const unresourced = working.filter(a => !resourced.has(a.id)).map(a => a.id);
+  add(10, "Resources", unresourced.length === 0,
+      +(pct(unresourced.length, working.length) * 100).toFixed(1),
+      "100% of working activities resourced",
+      `${unresourced.length} of ${working.length} working activities carry no cost or resource`,
+      unresourced);
+
+  add(11, "Missed Tasks", null, null, "≤ 5% finished late against baseline",
+      "Skipped: needs both baseline and actual finish dates");
+
+  if (result.criticalPath.length) {
+    const probeId = result.criticalPath[0];
+    const probed = activities.map(a =>
+      a.id === probeId ? { ...a, duration: a.duration + 600 } : a);
+    const moved = calculateCpm(probed, rels).duration - result.duration;
+    add(12, "Critical Path Test", moved === 600, moved,
+        "Project finish moves by the injected delay",
+        `A 600-day delay on ${probeId} moved the finish by ${moved} days`,
+        moved === 600 ? [] : [probeId]);
+  } else {
+    add(12, "Critical Path Test", null, null,
+        "Project finish moves by the injected delay", "Skipped: no critical path to probe");
+  }
+
+  const cpLength = result.duration;
+  if (cpLength > 0) {
+    const finishFloats = [...result.activities.values()]
+      .filter(a => a.earlyFinish === cpLength).map(a => a.totalFloat);
+    const finishFloat = finishFloats.length ? Math.min(...finishFloats) : 0;
+    const cpli = (cpLength + finishFloat) / cpLength;
+    add(13, "Critical Path Length Index", cpli >= 0.95, +cpli.toFixed(3), "≥ 0.95",
+        `CPLI of ${cpli.toFixed(3)} on a ${cpLength}-day critical path`);
+  } else {
+    add(13, "Critical Path Length Index", null, null, "≥ 0.95", "Skipped: zero-length critical path");
+  }
+
+  add(14, "Baseline Execution Index", null, null, "≥ 0.95",
+      "Skipped: needs both baseline and actual finish dates");
+
+  const runnable = checks.filter(c => c.passed !== null);
+  const score = runnable.length ? 100 * runnable.filter(c => c.passed).length / runnable.length : 0;
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";
+  const blocking = new Set([1, 7, 13]);
+
+  return {
+    checks, score, grade,
+    optimisable: !checks.some(c => blocking.has(c.number) && c.passed === false)
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   The demo project — identical to seed_demo.py.
+   ───────────────────────────────────────────────────────────── */
+
+const BASE_ACTIVITIES = [
+  ["A100", "Mobilisation & site setup", 5, null],
+  ["A110", "Demolition & strip-out", 15, null],
+  ["A120", "Asbestos survey clearance", 3, null],
+  ["A200", "Structural steel remediation", 20, null],
+  ["A210", "Level 1 slab repairs", 10, null],
+  ["A220", "Level 2 slab repairs", 10, null],
+  ["A230", "Level 3 slab repairs", 10, null],
+  ["A240", "Level 4 slab repairs", 10, null],
+  ["A300", "Roof membrane replacement", 12, null],
+  ["A310", "Facade glazing — north", 18, null],
+  ["A320", "Facade glazing — south", 18, null],
+  ["A400", "MEP rough-in, all levels", 70, null],
+  ["A410", "Fire protection rough-in", 25, null],
+  ["A420", "Electrical distribution", 30, null],
+  ["A430", "Utility connection", 4, 95],
+  ["A500", "Drywall & partitions", 28, null],
+  ["A510", "Ceilings & grid", 20, null],
+  ["A520", "Flooring", 18, null],
+  ["A530", "Painting & finishes", 22, null],
+  ["A600", "MEP commissioning", 15, null],
+  ["A610", "Life safety testing", 8, null],
+  ["A620", "Building control inspection", 5, null],
+  ["A700", "Snagging & handover", 10, null],
+  ["A710", "Practical completion", 0, null],
+  ["A900", "Landscaping (scope TBC)", 12, null],
+].map(([id, name, duration, constraintStart]) => ({ id, name, duration, constraintStart }));
+
+const BASE_RELS = [
+  ["A100","A110",FS,0], ["A100","A120",FS,0], ["A110","A200",FS,0], ["A120","A200",FS,0],
+  ["A200","A210",FS,0], ["A210","A220",FS,0], ["A220","A230",FS,0], ["A230","A240",FS,0],
+  ["A200","A300",FS,0], ["A300","A310",FS,0], ["A310","A320",SS,5], ["A240","A400",FS,0],
+  ["A400","A410",SS,10], ["A400","A420",SS,15], ["A420","A430",FS,0], ["A400","A500",FS,-5],
+  ["A320","A500",FS,0], ["A500","A510",FS,0], ["A510","A520",FS,0], ["A520","A530",FS,0],
+  ["A410","A600",FS,0], ["A430","A600",FS,0], ["A530","A600",FS,0], ["A600","A610",FS,0],
+  ["A610","A620",FS,0], ["A620","A700",FS,0], ["A700","A710",FS,0],
+].map(([p, s, t, lag]) => ({ p, s, t, lag }));
+
+const RESOURCED = ["A100","A110","A200","A210","A220","A230","A240","A300","A310","A320",
+  "A400","A410","A420","A500","A510","A520","A530","A600","A700"];
+
+const REPAIRS = [
+  {
+    key: "lead",
+    label: "Remove the lead on drywall",
+    note: "Drywall was overlapped into MEP rough-in by 5 days. Removing the lead makes the true sequence visible — and lengthens the schedule, which is the point.",
+    fixes: "fixes check 2",
+  },
+  {
+    key: "overlap",
+    label: "Replace overlaps with explicit logic",
+    note: "Three Start-to-Start ties with lag stood in for real sequencing. Converting them to Finish-to-Start states what actually has to happen first.",
+    fixes: "fixes checks 3 and 4",
+  },
+  {
+    key: "orphan",
+    label: "Tie in the orphaned activity",
+    note: "Landscaping sat with no predecessor and no successor, floating 259 days. Every schedule has one of these hiding in it.",
+    fixes: "clears the offender on check 1",
+  },
+  {
+    key: "resource",
+    label: "Resource every working activity",
+    note: "Five activities carried no cost or resource, so they contribute nothing to the cost-loaded forecast.",
+    fixes: "fixes check 10",
+  },
+];
+
+function buildNetwork(active) {
+  const activities = BASE_ACTIVITIES.map(a => ({ ...a }));
+  let rels = BASE_RELS.map(r => ({ ...r }));
+
+  if (active.has("lead"))    rels = rels.map(r => r.lag < 0 ? { ...r, lag: 0 } : r);
+  if (active.has("overlap")) rels = rels.map(r => r.t !== FS ? { ...r, t: FS, lag: 0 } : r);
+  if (active.has("orphan"))  rels = rels.concat([{ p: "A530", s: "A900", t: FS, lag: 0 },
+                                                 { p: "A900", s: "A700", t: FS, lag: 0 }]);
+  const resourced = active.has("resource") ? activities.map(a => a.id) : RESOURCED;
+  return { activities, rels, resourced };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Rendering
+   ───────────────────────────────────────────────────────────── */
+
+const active = new Set();
+const el = id => document.getElementById(id);
+
+function renderRepairs() {
+  el("repairs").innerHTML = REPAIRS.map(r => `
+    <label class="repair">
+      <input type="checkbox" data-key="${r.key}">
+      <span class="repair-label">${r.label}
+        <span class="repair-note">${r.note}</span>
+        <span class="repair-fixes">${r.fixes}</span>
+      </span>
+    </label>`).join("");
+
+  el("repairs").addEventListener("change", event => {
+    const key = event.target.dataset.key;
+    if (!key) return;
+    event.target.checked ? active.add(key) : active.delete(key);
+    render();
+  });
+}
+
+function render() {
+  const { activities, rels, resourced } = buildNetwork(active);
+  const result = calculateCpm(activities, rels);
+  const report = assessSchedule(activities, rels, result, resourced);
+
+  const criticalCount = [...result.activities.values()].filter(a => a.isCritical).length;
+  el("fig-duration").innerHTML = `${result.duration}<small> wd</small>`;
+  el("fig-critical").innerHTML = `${criticalCount}<small> of ${activities.length}</small>`;
+
+  const gradeEl = el("fig-grade");
+  gradeEl.className = `grade-${report.grade}`;
+  gradeEl.innerHTML = `${report.grade}<small> &nbsp;${report.score.toFixed(1)}%</small>`;
+
+  // Scale every bar against the widest schedule any repair set can produce, so
+  // bars do not rescale underfoot when a repair lengthens the project.
+  const span = 292;
+
+  el("chart").innerHTML = activities.map(a => {
+    const r = result.activities.get(a.id);
+    const left  = (r.earlyStart / span) * 100;
+    const width = Math.max((r.duration / span) * 100, 0.7);
+    const floatWidth = (r.totalFloat / span) * 100;
+    const tfLeft = left + width + Math.max(floatWidth, 0);
+    // The float figure sits after the bar, but flips inside once the bar runs
+    // far enough right that the number would be clipped by the track.
+    const tfInside = tfLeft > 88;
+    return `
+      <div class="row${r.isCritical ? " is-critical" : ""}">
+        <span class="row-name" title="${a.id} ${a.name} — ${r.duration} wd, ${r.totalFloat} days float"><b>${a.id}</b> ${a.name}</span>
+        <span class="row-track">
+          ${floatWidth > 0.2 ? `<span class="bar bar-float" style="left:${left + width}%;width:${floatWidth}%"></span>` : ""}
+          <span class="bar bar-work${r.isCritical ? " is-critical" : ""}" style="left:${left}%;width:${width}%"></span>
+          ${r.totalFloat > 0 && !tfInside ? `<span class="bar-tf" style="left:${tfLeft}%">+${r.totalFloat}</span>` : ""}
+        </span>
+      </div>`;
+  }).join("");
+
+  el("checks").innerHTML = report.checks.map(c => {
+    const status = c.passed === null ? "skip" : c.passed ? "pass" : "fail";
+    const word = c.passed === null ? "skip" : c.passed ? "pass" : "fail";
+    return `
+      <div class="check">
+        <span class="check-n">${String(c.number).padStart(2, "0")}</span>
+        <span class="check-name">${c.name}
+          <span class="check-detail">${c.detail}</span>
+        </span>
+        <span class="chip ${status}">${word}</span>
+      </div>`;
+  }).join("");
+
+  const failedChecks = report.checks.filter(c => c.passed === false);
+  const failed = failedChecks.length;
+  const onlyHighFloat = failed === 1 && failedChecks[0].number === 6;
+
+  let verdict;
+  if (failed === 0) {
+    verdict = `<strong>Every runnable check passes.</strong> Float is meaningful across the
+      network, so an optimiser has something real to work against.`;
+  } else if (onlyHighFloat) {
+    verdict = `<strong>Grade A, with one check left standing.</strong> The float on the facade
+      and MEP branches is genuine slack, not missing logic. High float is a signal to
+      investigate, not a defect — so the assessment reports it and leaves the judgement to a
+      planner. That boundary is the honest limit of any automated score.`;
+  } else if (!report.optimisable) {
+    verdict = `<strong>${failed} checks failing, including a blocking one.</strong> The optimiser
+      refuses to run: float is not meaningful on this network, so any saving it claimed would be
+      arithmetic on nonsense.`;
+  } else {
+    verdict = `<strong>${failed} check${failed === 1 ? "" : "s"} failing.</strong> The logic is
+      sound enough to optimise against, but these failures distort float — a saving claimed on an
+      activity whose float is wrong is not a saving.`;
+  }
+  el("verdict").innerHTML = verdict;
+}
+
+renderRepairs();
+render();
+</script>
+
+</body>
+</html>

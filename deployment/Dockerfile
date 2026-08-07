@@ -20,9 +20,11 @@ RUN groupadd -r bbschedule && useradd -r -g bbschedule bbschedule
 # Set work directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install from the single dependency list at the repository root, plus the
+# extras a production deployment needs. Build from the repo root:
+#   docker build -f deployment/Dockerfile -t bbschedule .
+COPY pyproject.toml requirements.txt README.md ./
+RUN pip install --no-cache-dir ".[postgres,async,integrations]"
 
 # Production stage
 FROM python:3.11-slim as production

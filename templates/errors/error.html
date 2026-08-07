@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}{{ status }} — {{ message }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-7 text-center">
+      <p class="display-1 fw-bold text-muted mb-0">{{ status }}</p>
+      <h1 class="h3 mb-3">{{ message }}</h1>
+
+      {% if status == 404 %}
+        <p class="text-muted mb-4">
+          That address does not match anything on the platform. It may have moved, or the
+          project may have been deleted.
+        </p>
+      {% elif status == 403 %}
+        <p class="text-muted mb-4">
+          Your account does not have access to this. If you believe it should, ask an
+          administrator at your company to check your role.
+        </p>
+      {% elif status == 429 %}
+        <p class="text-muted mb-4">
+          Too many requests in a short window. Wait a moment and try again.
+        </p>
+      {% else %}
+        <p class="text-muted mb-4">
+          Something went wrong on our side. The error has been logged. If it keeps happening,
+          include the time it occurred when you report it.
+        </p>
+      {% endif %}
+
+      <div class="d-flex gap-2 justify-content-center">
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary">Go to dashboard</a>
+        <a href="javascript:history.back()" class="btn btn-outline-secondary">Go back</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

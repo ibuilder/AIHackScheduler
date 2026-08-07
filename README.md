@@ -1,341 +1,237 @@
-# BBSchedule Platform
+# BBSchedule
 
-## Enterprise Construction Scheduling & Project Management
+**Construction scheduling with a CPM engine you can check, and a schedule-quality score that tells you whether to trust it.**
 
-BBSchedule is a comprehensive, enterprise-grade construction scheduling application built specifically for Balfour Beatty US and general contracting companies. The platform provides professional project management capabilities with multiple scheduling methodologies, financial tracking, equipment management, and AI-powered analytics.
+[![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-70%20passing-brightgreen)](tests/)
 
-## 🚀 Key Features
-
-### Project Management
-- **Multi-tenant Architecture**: Company-specific data isolation with role-based access control
-- **Project Templates**: Standardized project setups for consistent scheduling
-- **Task Management**: Hierarchical task structures with dependencies and constraints
-- **Resource Allocation**: Comprehensive resource planning and assignment tracking
-
-### Scheduling Methodologies
-- **Gantt Charts**: Traditional timeline visualization with drag-and-drop functionality
-- **Linear Scheduling**: Time-distance diagrams for location-based projects
-- **Pull Planning**: Lean construction methodology with collaborative planning boards
-
-### Financial Management
-- **Cost Tracking**: Comprehensive transaction management with categorization
-- **Invoice Management**: Professional invoice generation and payment tracking
-- **Budget Control**: Project budget tracking with variance analysis
-- **Payment Processing**: Stripe integration for secure payment handling
-- **Financial Reporting**: Real-time financial dashboards and analytics
-
-### Equipment Management
-- **Asset Tracking**: Complete equipment lifecycle management
-- **Maintenance Scheduling**: Preventive maintenance planning and tracking
-- **Utilization Analytics**: Equipment usage optimization and reporting
-- **Assignment Management**: Equipment allocation across projects
-
-### Azure AI Integration
-- **Predictive Analytics**: Schedule optimization using Azure AI services
-- **Risk Assessment**: AI-powered project outcome prediction
-- **Microsoft Fabric**: Data warehousing and advanced analytics
-- **Azure AI Foundry**: Intelligent insights and recommendations
-
-### Power BI Integration
-- **Executive Dashboards**: Real-time business intelligence
-- **Custom Reports**: Tailored reporting for construction metrics
-- **Data Visualization**: Interactive charts and analytics
-- **Workspace Integration**: Seamless Power BI workspace connectivity
-
-## 🛠 Technology Stack
-
-### Backend
-- **Flask**: Python web framework with modular blueprint architecture
-- **SQLAlchemy**: Object-relational mapping with PostgreSQL database
-- **Celery**: Asynchronous task processing with Redis message broker
-- **Flask-Login**: User authentication and session management
-- **Azure SDK**: Cloud services integration
-
-### Frontend
-- **Bootstrap 5**: Responsive design framework
-- **D3.js**: Interactive data visualizations and Gantt charts
-- **Chart.js**: Dashboard analytics and reporting charts
-- **JavaScript**: Enhanced user interface interactions
-
-### Database & Storage
-- **PostgreSQL**: Primary database with multi-tenant design
-- **Redis**: Caching layer and Celery message broker
-- **Azure Blob Storage**: File storage and document management
-
-### External Services
-- **Stripe**: Payment processing and subscription management
-- **Azure AI Services**: Machine learning and predictive analytics
-- **Microsoft Graph API**: Calendar and user data integration
-- **Power BI**: Business intelligence and reporting
-
-## 📋 Prerequisites
-
-- Python 3.11+
-- PostgreSQL 13+
-- Redis 6+ (for caching and background tasks)
-- Azure Account (optional - for AI services)
-- Stripe Account (optional - for payment processing)
-
-## 🔧 Installation
-
-### 1. Clone the Repository
-```bash
-git clone <repository-url>
-cd bbschedule-platform
-```
-
-### 2. Environment Setup
-```bash
-# Install dependencies (using uv - recommended)
-uv pip sync
-
-# Alternative: Install from deployment requirements
-pip install -r deployment/requirements.txt
-```
-
-### 3. Database Configuration
-```bash
-# Set up PostgreSQL database
-createdb bbschedule_dev
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env with your database credentials
-```
-
-### 4. Environment Variables
-Create a `.env` file with the following variables:
-
-```env
-# Database
-DATABASE_URL=postgresql://username:password@localhost/bbschedule_dev
-
-# Flask Configuration
-SESSION_SECRET=your-secret-key-here
-FLASK_ENV=development
-
-# Azure Services
-AZURE_CLIENT_ID=your-azure-client-id
-AZURE_CLIENT_SECRET=your-azure-client-secret
-AZURE_TENANT_ID=your-azure-tenant-id
-
-# Stripe Payment Processing
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-
-# Power BI Integration
-POWERBI_CLIENT_ID=your-powerbi-client-id
-POWERBI_CLIENT_SECRET=your-powerbi-client-secret
-POWERBI_TENANT_ID=your-powerbi-tenant-id
-
-# Redis
-REDIS_URL=redis://localhost:6379/0
-```
-
-### 5. Database Initialization
-```bash
-# Initialize database tables
-export FLASK_APP=main.py
-flask shell -c "from app import db; db.create_all()"
-
-# Note: Database migrations are planned for future releases
-```
-
-### 6. Start Services
-```bash
-# Start Redis server
-redis-server
-
-# Start Celery worker (in separate terminal)
-celery -A tasks.celery_config.celery worker --loglevel=info
-
-# Start Flask application (development)
-export FLASK_APP=main.py
-flask run --host=0.0.0.0 --port=5000
-
-# Or using Gunicorn (production)
-gunicorn --bind 0.0.0.0:5000 --reload main:app
-```
-
-## 🚦 Usage
-
-### Accessing the Platform
-1. Navigate to `http://localhost:5000`
-2. Register a new company account or login with existing credentials
-3. Complete the company setup process
-4. Start creating projects and managing schedules
-
-### User Roles
-- **Admin**: Full system access and user management
-- **Project Manager**: Project creation and team management
-- **Scheduler**: Schedule creation and task management
-- **Field Supervisor**: Field updates and progress tracking
-- **Viewer**: Read-only access to projects and reports
-
-### Creating Your First Project
-1. Go to Projects → New Project
-2. Fill in project details and budget information
-3. Select a scheduling methodology (Gantt, Linear, or Pull Planning)
-4. Add tasks, resources, and dependencies
-5. Assign team members and equipment
-6. Start tracking progress and costs
-
-## 📊 Key Modules
-
-### Project Management (`/projects`)
-- Project creation and configuration
-- Task hierarchy and dependency management
-- Resource allocation and scheduling
-- Progress tracking and reporting
-
-### Financial Management (`/financial`)
-- Transaction recording and categorization
-- Invoice generation and management
-- Budget tracking and variance analysis
-- Financial reporting and analytics
-- *Payment processing integration in progress*
-
-### Equipment Management (`/equipment`)
-- Equipment registration and tracking
-- Maintenance scheduling and history
-- Utilization analytics and reporting
-- Project assignment management
-
-### Scheduling (`/scheduling`)
-- Multiple scheduling methodologies
-- Interactive timeline management
-- Resource conflict resolution
-- Schedule optimization tools
-
-### Reports (`/reports`)
-- Executive dashboards
-- Project status reports
-- Financial analytics
-- Equipment utilization reports
-
-## 🔐 Security Features
-
-- **Multi-tenant Data Isolation**: Company-scoped data access
-- **Role-based Access Control**: Granular permission system
-- **Session Management**: Secure user authentication
-- **CSRF Protection**: Form security and validation
-- **HTTPS Enforcement**: Secure data transmission
-- **Audit Logging**: Comprehensive activity tracking
-
-## 🏗 Architecture
-
-### Application Structure
-```
-├── app.py                 # Main application factory
-├── models.py             # Database models and relationships
-├── routes.py             # Core application routes
-├── extensions.py         # Flask extensions configuration
-├── blueprints/           # Feature-specific blueprints
-│   ├── projects.py
-│   ├── scheduling.py
-│   ├── financial_management.py
-│   └── equipment_management.py
-├── templates/            # Jinja2 templates
-├── static/              # CSS, JavaScript, images
-├── azure_ai/            # Azure AI integration
-├── analytics/           # Advanced analytics
-├── security/            # Security utilities
-└── deployment/          # Docker and deployment configs
-```
-
-### Database Design
-- **Multi-tenant**: Company-scoped data isolation
-- **Relational**: Proper foreign key relationships
-- **Indexed**: Optimized for query performance
-- **Auditable**: Comprehensive change tracking
-
-## 🚀 Deployment
-
-### Docker Deployment
-```bash
-# Build Docker image
-docker build -t bbschedule-platform .
-
-# Run with Docker Compose
-docker-compose up -d
-```
-
-### Azure Deployment
-```bash
-# Deploy to Azure App Service
-az webapp up --name bbschedule-platform --resource-group rg-bbschedule
-```
-
-### Production Configuration
-- Configure environment variables for production
-- Set up SSL certificates and domain
-- Configure database backups and monitoring
-- Set up log aggregation and alerting
-
-## 📈 Performance
-
-### Optimization Features
-- **Database Indexing**: Optimized query performance
-- **Caching Layer**: Redis-based caching for frequent queries
-- **Async Processing**: Background tasks with Celery
-- **CDN Integration**: Static asset optimization
-- **Query Optimization**: Efficient database queries
-
-### Monitoring
-- Application performance monitoring
-- Database query analysis
-- User activity tracking
-- System resource monitoring
-
-## 🤝 Contributing
-
-### Development Guidelines
-1. Follow PEP 8 style guidelines
-2. Write comprehensive tests for new features
-3. Update documentation for API changes
-4. Use meaningful commit messages
-5. Create pull requests for code review
-
-### Testing
-```bash
-# Testing framework setup is planned for future releases
-# Currently: Manual testing via application interface
-# Unit tests will be added in upcoming versions
-```
-
-## 📄 License
-
-This project is proprietary software developed for Balfour Beatty US. All rights reserved.
-
-## 📞 Support
-
-For technical support and questions:
-- Internal Documentation: [Company Wiki]
-- Technical Issues: [Internal Support Portal]
-- Feature Requests: [Product Management Team]
-
-## 🔄 Version History
-
-### v2.0.0 (Current)
-- Complete financial management system
-- Advanced equipment tracking
-- Azure AI predictive analytics integration
-- Enhanced security features
-- *Stripe payment integration in progress*
-
-### v1.5.0
-- Power BI integration
-- Mobile optimization
-- Real-time collaboration
-- Executive dashboards
-
-### v1.0.0
-- Initial platform release
-- Basic project management
-- Gantt chart scheduling
-- User authentication
+Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
+computes the critical path properly, then grades the schedule against the
+[DCMA 14-Point Assessment](https://www.planacademy.com/dcma-14-point-schedule-assessment/)
+and refuses to optimise one that fails.
 
 ---
 
-**BBSchedule Platform** - Empowering construction project success through intelligent scheduling and comprehensive project management.
+## Try it in one minute
+
+```bash
+git clone https://github.com/ibuilder/AIHackScheduler.git
+cd AIHackScheduler
+pip install -r requirements.txt
+export SESSION_SECRET=dev-secret          # Windows: set SESSION_SECRET=dev-secret
+flask --app app init-db
+flask --app app seed-demo
+flask --app app run
+```
+
+No PostgreSQL, no Redis, no Azure account. Development falls back to SQLite and every
+cloud integration is optional. Open <http://localhost:5000> and sign in as
+`demo` / `demo1234`.
+
+`seed-demo` loads a 25-activity commercial fit-out. It is deliberately imperfect — a
+dangling activity, a lead, excess lags, unresourced work — so the schedule assessment has
+real defects to report:
+
+```
+Grade F | score 54.5 | optimisable True
+  PASS   1. Logic                        1 of 25 activities are dangling
+  FAIL   2. Leads                        1 relationship uses a lead; leads hide true logic
+  FAIL   3. Lags                         3 of 27 relationships carry a lag
+  FAIL   4. Relationship Types           24 of 27 relationships are FS
+  PASS   5. Hard Constraints             1 activity is pinned by a date constraint
+  FAIL   6. High Float                   7 activities have more than 44 days of float
+  PASS   7. Negative Float               0 activities cannot meet their required dates
+  PASS   8. High Duration                1 activity runs longer than a reporting quarter
+  ----   9. Invalid Dates                Skipped: no actual finish dates supplied
+  FAIL  10. Resources                    5 of 24 working activities carry no cost or resource
+  ----  11. Missed Tasks                 Skipped: needs baseline and actual finish dates
+  PASS  12. Critical Path Test           A 600-day delay on 'A100' moved the finish by 600 days
+  PASS  13. Critical Path Length Index   CPLI of 1.000 on a 271-day critical path
+  ----  14. Baseline Execution Index     Skipped: needs baseline and actual finish dates
+```
+
+Checks that need data the schema does not hold report as **skipped**, not as passing. A
+score is only as honest as what it admits it could not measure.
+
+---
+
+## What it does
+
+### Scheduling engine — [`core/`](core/)
+
+Pure Python, no Flask or SQLAlchemy imports, fully unit tested.
+
+- **Critical Path Method** — topologically ordered forward and backward passes; all four
+  relationship types (FS, SS, FF, SF) with positive or negative lag; **total float and
+  free float computed separately**; cycle detection that names the loop; a driving-path
+  walk that returns a connected chain rather than a bag of zero-float activities.
+- **Working calendars** — configurable working weekdays and holidays. Finish dates are the
+  last day worked, which is how planners read them.
+- **DCMA 14-point assessment** — logic gaps, leads, lags, relationship-type mix, hard
+  constraints, high float, negative float, high duration, resource coverage, the
+  critical-path integrity probe, and CPLI.
+
+```python
+from core import Activity, Relationship, RelationType, calculate_cpm, assess_schedule
+
+activities = [
+    Activity("A", "Excavate", 5),
+    Activity("B", "Pour footings", 8),
+    Activity("C", "Cure", 7),
+]
+links = [
+    Relationship("A", "B"),
+    Relationship("B", "C", RelationType.FS, lag=2),
+]
+
+result = calculate_cpm(activities, links)
+print(result.project_duration)          # 22
+print(result.critical_path)             # ['A', 'B', 'C']
+print(result.activities["B"].total_float)   # 0
+
+report = assess_schedule(activities, links)
+print(report.grade, report.is_optimisable)
+```
+
+### Three planning methodologies, one data model
+
+A `Task` carries CPM fields, `station_start`/`station_end` for linear (time–distance)
+scheduling, and `pull_plan_week` for Last Planner–style pull planning. A contractor running
+a linear infrastructure job alongside a vertical build does not need two products that
+cannot talk to each other.
+
+### AI grounded in computed facts
+
+Schedule analysis, optimisation, and completion forecasting run CPM and the quality
+assessment **first**, then pass the results into the prompt as given. The model interprets;
+it does not calculate. The system prompt forbids claiming a saving on an activity that is
+not on the critical path, and the optimiser refuses to run at all against a schedule whose
+logic fails the blocking checks.
+
+Optimising an unsound network produces confident nonsense. This is the difference between
+AI that helps and AI that launders guesswork.
+
+---
+
+## API
+
+All endpoints are company-scoped; a request for another tenant's project is
+indistinguishable from a request for one that does not exist.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/schedule/projects/<id>/cpm` | Every activity with early/late dates, total float, free float, criticality |
+| `GET /api/schedule/projects/<id>/health` | DCMA 14-point assessment, grade, and per-check offenders |
+| `GET /api/schedule/projects/<id>/critical-path` | The driving path only, for chart overlays |
+
+```bash
+curl -b cookies.txt http://localhost:5000/api/schedule/projects/1/health | jq '.grade, .score'
+```
+
+---
+
+## Architecture
+
+```
+core/                    Pure scheduling algorithms — no Flask, no database
+  cpm.py                   Forward/backward passes, float, cycle detection
+  calendar.py              Working-day ↔ calendar-date mapping
+  schedule_health.py       DCMA 14-point assessment
+services/
+  schedule_analysis.py     Bridge between the ORM and core/
+  schedule_optimizer.py    Optimisation, gated on schedule quality
+  azure_ai.py              LLM interpretation, grounded in computed CPM
+  optional.py              Lazy loading for every optional integration
+blueprints/                Flask routes, one per feature area
+models.py                  SQLAlchemy models, multi-tenant by company
+tests/                     70 tests, hand-checked scheduling networks
+seed_demo.py               A realistic, deliberately imperfect demo project
+```
+
+The layering is the point: `core/` knows nothing about the web application, so its
+correctness can be established in isolation and its results reused anywhere.
+
+---
+
+## Configuration
+
+Only two variables are needed to run:
+
+| Variable | Required | Default |
+|---|---|---|
+| `SESSION_SECRET` | yes | — (production refuses to start without it) |
+| `DATABASE_URL` | no | `sqlite:///bbschedule-dev.db` in development |
+| `FLASK_ENV` | no | `development` |
+
+Everything else is optional and the feature degrades cleanly when absent. See
+[`.env.example`](.env.example).
+
+```bash
+pip install -e ".[postgres]"       # PostgreSQL
+pip install -e ".[async]"          # Celery + Redis background tasks
+pip install -e ".[integrations]"   # Azure AI, Power BI, Stripe, Excel import
+pip install -e ".[dev]"            # pytest, ruff
+```
+
+---
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest                    # 70 tests
+ruff check .              # lint
+ruff format .             # format
+```
+
+CI runs tests on Python 3.11, 3.12 and 3.13, lints, and boots and seeds the application on
+every push.
+
+---
+
+## Status and roadmap
+
+This is working software with a solid core and an unfinished perimeter. Being specific
+about which is which:
+
+**Solid** — CPM engine, schedule quality assessment, working calendars, multi-tenant
+isolation, the schedule analysis API.
+
+**Working, thin** — project and task management, Gantt/linear/pull-planning views, auth
+and roles.
+
+**Facade** — equipment maintenance and utilisation return placeholder values; payment
+processing is unimplemented; `azure_ai/predictive_analytics.py` returns hardcoded numbers.
+These are marked for completion or removal.
+
+The near-term priorities, in order:
+
+1. **Baseline and actual dates** on `Task` — unlocks DCMA checks 9, 11 and 14, plus
+   Baseline Execution Index and schedule variance. Highest-value change remaining.
+2. **Schedule quality in the UI** — grade badges, drill-down, trend across submissions.
+3. **P6 `.xer` and MS Project import** — nothing serious enters through a web form.
+4. **Monte Carlo risk analysis** — P50/P80 completion dates and a criticality index, over
+   the engine that already exists.
+
+[`PLAN.md`](PLAN.md) has the full assessment: what was wrong, what the market looks like in
+2026, and why schedule quality is the position worth taking.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep `core/` free of Flask and SQLAlchemy
+imports, and add a hand-checkable test for any change to the scheduling maths — a
+scheduling engine is only trustworthy if its answers can be verified by hand.
+
+## License
+
+**Not yet settled.** The repository is public but carries no `LICENSE` file, which under
+GitHub's terms grants no usage rights to anyone. Resolving this is a decision for the
+repository owner; see item 9 in [`PLAN.md`](PLAN.md) for the options.
+
+---
+
+*Built on the observation that most construction schedules cannot support the decisions
+made from them, and that this is measurable.*
