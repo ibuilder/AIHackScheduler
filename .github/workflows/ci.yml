@@ -48,7 +48,9 @@ jobs:
           cache: pip
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned to match the version in the dev extra, so a ruff release
+        # cannot fail this job without a change to the codebase.
+        run: pip install ruff==0.16.2
 
       - name: Check formatting
         run: ruff format --check .
