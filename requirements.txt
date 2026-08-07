@@ -1,0 +1,21 @@
+# Minimum set to run the platform locally on SQLite.
+#   pip install -r requirements.txt
+# For PostgreSQL, Redis, Azure, Stripe and Power BI, install the extras:
+#   pip install -e ".[postgres,async,integrations]"
+
+flask>=3.1.2
+flask-sqlalchemy>=3.1.1
+flask-login>=0.6.3
+flask-migrate>=4.1.0
+flask-wtf>=1.2.2
+flask-limiter>=3.12
+flask-caching>=2.3.1
+flask-talisman>=1.1.0
+sqlalchemy>=2.0.43
+werkzeug>=3.1.3
+python-dotenv>=1.1.1
+python-dateutil>=2.9.0.post0
+email-validator>=2.3.0
+gunicorn>=23.0.0
+psutil>=7.0.0
+requests>=2.32.5

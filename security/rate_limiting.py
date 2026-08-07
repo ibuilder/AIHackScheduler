@@ -1,124 +1,150 @@
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask import request, current_app
-import redis
-from extensions import db
+"""Rate limiting and request hardening.
+
+Limits are attached to the *real* view functions after the blueprints are
+registered. The previous version declared throwaway routes at the same URLs as
+the genuine endpoints (``/auth/login``, ``/api/<path:path>``), which shadowed
+live routes without limiting anything.
+"""
+
 import logging
 
+from flask import request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# endpoint name -> limit string. Endpoint names are ``blueprint.function``.
+ENDPOINT_LIMITS = {
+    "auth.login": "10 per minute",
+    "auth.register": "5 per hour",
+    "projects.create_project": "30 per hour",
+    "scheduling.update_task": "120 per minute",
+    "azure.analyze_project": "20 per hour",
+    "azure.ai_optimize": "20 per hour",
+}
+
+# Endpoint prefixes that get a shared API budget.
+API_PREFIX_LIMIT = "300 per hour"
+API_PREFIXES = ("analytics.", "project_mgmt.", "powerbi.", "azure_ai.")
+
+
 def get_user_id():
-    """Get user ID for rate limiting, fallback to IP address"""
+    """Rate-limit key: the signed-in user, falling back to the client address."""
     try:
         from flask_login import current_user
-        if hasattr(current_user, 'id') and current_user.is_authenticated:
-            return str(current_user.id)
-    except:
+
+        if current_user.is_authenticated:
+            return f"user:{current_user.id}"
+    except Exception:  # outside a request context, or login not initialised
         pass
     return get_remote_address()
 
+
 def setup_rate_limiting(app):
-    """Configure rate limiting for the application"""
-    
-    # Use Redis if available, otherwise memory storage
-    redis_url = app.config.get('REDIS_URL', 'redis://localhost:6379')
-    
+    """Attach limits to registered endpoints. Call after blueprints register."""
+    storage_uri = app.config.get("RATELIMIT_STORAGE_URL") or app.config.get(
+        "REDIS_URL", "memory://"
+    )
+
     try:
         limiter = Limiter(
-            app,
-            key_func=get_user_id,
-            storage_uri=redis_url,
+            get_user_id,
+            app=app,
+            storage_uri=storage_uri,
             default_limits=["1000 per hour"],
-            headers_enabled=True
+            headers_enabled=True,
         )
-        
-        # Define rate limits for different endpoints
-        @limiter.limit("5 per minute")
-        @app.route('/auth/login', methods=['POST'])
-        def login_rate_limit():
-            pass
-            
-        @limiter.limit("3 per minute") 
-        @app.route('/auth/register', methods=['POST'])
-        def register_rate_limit():
-            pass
-            
-        @limiter.limit("100 per hour")
-        @app.route('/api/<path:path>')
-        def api_rate_limit():
-            pass
-            
-        @limiter.limit("10 per minute")
-        @app.route('/projects/create', methods=['POST'])
-        def project_create_rate_limit():
-            pass
-        
-        app.logger.info("Rate limiting configured successfully")
-        return limiter
-        
-    except Exception as e:
-        app.logger.error(f"Failed to setup rate limiting: {str(e)}")
-        # Fallback to basic memory-based limiting
-        limiter = Limiter(
-            app,
-            key_func=get_user_id,
-            default_limits=["200 per hour"]
+    except Exception as exc:
+        # A missing or unreachable Redis must not take the application down.
+        app.logger.warning(
+            "Rate limit storage %s unavailable (%s); falling back to in-process memory. "
+            "Memory storage is per-worker and does not hold across a restart.",
+            storage_uri,
+            exc,
         )
-        return limiter
+        limiter = Limiter(get_user_id, app=app, default_limits=["1000 per hour"])
+
+    applied, missing = 0, []
+    for endpoint, limit in ENDPOINT_LIMITS.items():
+        view = app.view_functions.get(endpoint)
+        if view is None:
+            missing.append(endpoint)
+            continue
+        app.view_functions[endpoint] = limiter.limit(limit)(view)
+        applied += 1
+
+    for endpoint, view in list(app.view_functions.items()):
+        if endpoint.startswith(API_PREFIXES) and endpoint not in ENDPOINT_LIMITS:
+            app.view_functions[endpoint] = limiter.limit(API_PREFIX_LIMIT)(view)
+            applied += 1
+
+    if missing:
+        app.logger.warning("Rate limits skipped for unknown endpoints: %s", ", ".join(missing))
+    app.logger.info("Rate limiting applied to %d endpoints", applied)
+    return limiter
+
 
 class SecurityMiddleware:
-    """Custom security middleware for additional protection"""
-    
+    """Response hardening and request size limits.
+
+    Content-Security-Policy is deliberately *not* set here — Flask-Talisman
+    owns it in production, and setting it in two places produced conflicting
+    headers whose effective policy depended on ordering.
+    """
+
     def __init__(self, app):
         self.app = app
         self.setup_security_headers()
         self.setup_input_validation()
-    
+
     def setup_security_headers(self):
-        """Add security headers to all responses"""
+        talisman_active = not self.app.config.get("DEBUG", False)
+
         @self.app.after_request
         def add_security_headers(response):
-            # Prevent clickjacking
-            response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-            
-            # Prevent MIME type sniffing
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            
-            # XSS Protection
-            response.headers['X-XSS-Protection'] = '1; mode=block'
-            
-            # Referrer Policy
-            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-            
-            # Content Security Policy
-            response.headers['Content-Security-Policy'] = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-                "img-src 'self' data: https:; "
-                "font-src 'self' https://cdn.jsdelivr.net; "
-                "connect-src 'self' https://api.powerbi.com;"
+            response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+            response.headers.setdefault(
+                "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
             )
-            
+
+            # In development Talisman is off, so supply a baseline CSP here.
+            if not talisman_active:
+                response.headers.setdefault(
+                    "Content-Security-Policy",
+                    "default-src 'self'; "
+                    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
+                    "https://cdnjs.cloudflare.com; "
+                    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
+                    "https://cdnjs.cloudflare.com; "
+                    "img-src 'self' data: https:; "
+                    "font-src 'self' https://cdn.jsdelivr.net; "
+                    "connect-src 'self';",
+                )
             return response
-    
+
     def setup_input_validation(self):
-        """Setup input validation middleware"""
+        """Reject oversized requests.
+
+        The previous implementation also rejected any query string containing
+        the substrings ``select``, ``update``, ``delete`` or ``script``. That
+        blocked legitimate traffic — a project named "Selected Phase 2", a
+        ``?sort=updated_at`` parameter — while providing no real protection,
+        since every query in this codebase goes through SQLAlchemy's parameter
+        binding. Input is validated at the point of use instead.
+        """
+
         @self.app.before_request
-        def validate_input():
-            # Skip validation for static files
-            if request.path.startswith('/static/'):
-                return
-            
-            # Validate request size
-            max_content_length = self.app.config.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)  # 16MB
+        def validate_request_size():
+            if request.path.startswith("/static/"):
+                return None
+
+            max_content_length = self.app.config.get("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
             if request.content_length and request.content_length > max_content_length:
-                logging.warning(f"Request too large: {request.content_length} bytes from {get_remote_address()}")
+                logging.warning(
+                    "Rejected oversized request: %s bytes from %s",
+                    request.content_length,
+                    get_remote_address(),
+                )
                 return "Request too large", 413
-            
-            # Basic SQL injection detection in query parameters
-            dangerous_patterns = ['union', 'select', 'insert', 'update', 'delete', 'drop', 'exec', 'script']
-            for arg in request.args.values():
-                arg_lower = arg.lower()
-                for pattern in dangerous_patterns:
-                    if pattern in arg_lower:
-                        logging.warning(f"Suspicious query parameter from {get_remote_address()}: {arg}")
-                        return "Invalid request", 400
+            return None
