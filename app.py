@@ -2,6 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+import click
 from flask import Flask, jsonify, render_template, request
 from flask_talisman import Talisman
 from jinja2 import TemplateNotFound
@@ -295,6 +296,70 @@ def register_cli(app):
         from seed_demo import seed
 
         seed()
+
+    @app.cli.command("import-schedule")
+    @click.argument("path", type=click.Path(exists=True, dir_okay=False))
+    @click.option("--company", type=int, required=True, help="Company id to import into.")
+    @click.option("--user", type=int, required=True, help="User id to record as the creator.")
+    @click.option("--name", default=None, help="Override the project name.")
+    def import_schedule_command(path, company, user, name):
+        """Import a .xer, .xml (MSPDI) or .mpp file as a new project."""
+        from pathlib import Path
+
+        from services.schedule_io import import_into_project, read_schedule_file
+
+        data = Path(path).read_bytes()
+        schedule = read_schedule_file(data, Path(path).name)
+
+        for warning in schedule.warnings:
+            click.echo(f"  warning: {warning}")
+
+        project = import_into_project(schedule, company_id=company, user_id=user, project_name=name)
+        summary = schedule.summary()
+        click.echo(f"Imported '{project.name}' as project {project.id}")
+        click.echo(
+            f"  {summary['activities']} activities, {summary['relationships']} relationships"
+        )
+        click.echo(f"  relationship types: {summary['relationship_types']}")
+
+    @app.cli.command("export-schedule")
+    @click.argument("project_id", type=int)
+    @click.option(
+        "--format",
+        "export_format",
+        type=click.Choice(["xer", "mspdi"]),
+        default="xer",
+        help="mspdi writes Microsoft Project XML. The binary .mpp cannot be written.",
+    )
+    @click.option("--out", "out_path", default=None, help="Where to write. Defaults to cwd.")
+    def export_schedule_command(project_id, export_format, out_path):
+        """Export a project as Primavera XER or Microsoft Project XML."""
+        from pathlib import Path
+
+        from services.schedule_io import export_project, serialise
+
+        schedule = export_project(project_id)
+        content, filename, _ = serialise(schedule, export_format)
+
+        destination = Path(out_path) if out_path else Path(filename)
+        destination.write_text(content, encoding="utf-8")
+        click.echo(f"Wrote {destination} ({len(content)} bytes)")
+
+    @app.cli.command("schedule-formats")
+    def schedule_formats_command():
+        """Show which schedule file formats this deployment can read and write."""
+        from services.schedule_io import capabilities
+
+        caps = capabilities()
+        click.echo("Read:")
+        for name, available in caps["read"].items():
+            click.echo(f"  {name:<6} {'yes' if available else 'no'}")
+        click.echo("Write:")
+        for name, available in caps["write"].items():
+            click.echo(f"  {name:<6} {'yes' if available else 'no'}")
+        for note in caps["notes"].values():
+            click.echo("")
+            click.echo(f"  {note}")
 
 
 # WSGI entry point. Gunicorn and the Flask CLI both import this name.

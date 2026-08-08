@@ -5,7 +5,7 @@
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-183%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-274%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
 computes the critical path properly, then grades the schedule against the
@@ -123,6 +123,44 @@ AI that helps and AI that launders guesswork.
 
 ---
 
+## File exchange
+
+Real schedules live in Primavera P6 and Microsoft Project. Nothing serious
+enters a scheduling tool through a web form.
+
+| Format | Read | Write | |
+|---|---|---|---|
+| **Primavera XER** (`.xer`) | yes | yes | Pure Python, no dependency |
+| **MS Project XML** (`.xml`, MSPDI) | yes | yes | Pure Python, no dependency |
+| **MS Project** (`.mpp`) | yes* | **no** | *needs `pip install -e ".[mpp]"` and a JVM |
+
+**`.mpp` cannot be written — by anyone.** The binary format is proprietary and
+only partly understood;
+[MPXJ's own maintainer says so](https://www.mpxj.org/faq/). Microsoft's
+supported interchange for writing is MSPDI XML, which Project opens directly
+and can then save as `.mpp`. Export MSPDI and you have your round trip.
+
+```bash
+flask --app app import-schedule plan.xer --company 1 --user 1
+flask --app app export-schedule 1 --format mspdi --out plan.xml
+flask --app app schedule-formats     # what this deployment can actually do
+```
+
+The readers get the four things wrong importers get wrong. P6 writes
+relationship types as `PR_SS`, not `SS` — store the raw string and every
+start-to-start tie silently becomes finish-to-start. Durations are hours
+against a calendar that is not always eight hours a day. Milestones are
+zero-duration and clamping them to one day moves every downstream date. Costs
+live on `TASKRSRC` and notes on `TASKMEMO`, not on `TASK`. Each has a named
+test.
+
+Round trips are tested by exporting, re-importing, and asserting the *computed
+schedule* has not moved — same duration, same finish, same driving path.
+
+Anything a reader could not map is returned as a warning rather than dropped.
+
+---
+
 ## API
 
 All endpoints are company-scoped; a request for another tenant's project is
@@ -137,6 +175,9 @@ indistinguishable from a request for one that does not exist.
 | `GET /api/schedule/projects/<id>/risk` | Monte Carlo percentiles and criticality index |
 | `POST /api/schedule/projects/<id>/baseline` | Freeze the current plan as the baseline |
 | `GET /api/financial/aged-receivables` | Outstanding balances bucketed by days overdue |
+| `POST /api/schedule/import` | Upload a `.xer`, `.xml` or `.mpp` as a new project |
+| `GET /api/schedule/projects/<id>/export/<format>` | Download as `xer` or `mspdi` |
+| `GET /api/schedule/formats` | What this deployment can read and write |
 
 ```bash
 curl -b cookies.txt http://localhost:5000/api/schedule/projects/1/health | jq '.grade, .score'
@@ -153,16 +194,20 @@ core/                    Pure scheduling algorithms — no Flask, no database
   schedule_health.py       DCMA 14-point assessment
   progress.py              Baseline Execution Index and variance
   risk.py                  Monte Carlo simulation over the network
+  exchange.py              Format-neutral schedule model
+  xer.py                   Primavera XER reader and writer
+  mspdi.py                 MS Project XML reader and writer
 services/
   schedule_analysis.py     Bridge between the ORM and core/
   schedule_risk.py         Simulation against a stored project
   schedule_optimizer.py    Optimisation, gated on schedule quality
   billing.py               Payment recording and invoice balances
+  schedule_io.py           File formats bridged to the ORM
   azure_ai.py              LLM interpretation, grounded in computed CPM
   optional.py              Lazy loading for every optional integration
 blueprints/                Flask routes, one per feature area
 models.py                  SQLAlchemy models, multi-tenant by company
-tests/                     183 tests, hand-checked scheduling networks
+tests/                     274 tests, hand-checked scheduling networks
 seed_demo.py               A realistic, deliberately imperfect demo project
 ```
 
@@ -188,6 +233,7 @@ Everything else is optional and the feature degrades cleanly when absent. See
 pip install -e ".[postgres]"       # PostgreSQL
 pip install -e ".[async]"          # Celery + Redis background tasks
 pip install -e ".[integrations]"   # Azure AI, Power BI, Stripe, Excel import
+pip install -e ".[mpp]"            # reading binary .mpp (needs a JVM)
 pip install -e ".[dev]"            # pytest, ruff
 ```
 
@@ -197,7 +243,7 @@ pip install -e ".[dev]"            # pytest, ruff
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 183 tests
+pytest                    # 274 tests
 ruff check .              # lint
 ruff format .             # format
 ```
@@ -254,12 +300,10 @@ The near-term priorities, in order:
 
 1. **Schedule quality in the UI** — grade badges, drill-down to offending activities, and
    a trend across baseline revisions. The data is all computed; nothing surfaces it yet.
-2. **P6 `.xer` and MS Project import** — nothing serious enters a scheduling tool through
-   a web form.
-3. **Resource-levelled scheduling** — the optimiser still emits generic advice where it
+2. **Resource-levelled scheduling** — the optimiser still emits generic advice where it
    could run a real serial-schedule-generation pass over existing assignments.
-4. **Schedule comparison between baselines** — the snapshots are stored; diffing them is
-   where delay analysis starts.
+3. **Schedule comparison between baselines** — the snapshots are stored; diffing them is
+   where delay analysis starts, and delay analysis is where the money is.
 
 [`PLAN.md`](PLAN.md) has the full assessment: what was wrong, what the market looks like in
 2026, and why schedule quality is the position worth taking.

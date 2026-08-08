@@ -150,7 +150,7 @@ the assessment has real defects to find — it grades **F (54.5%)** and names ea
 
 ### Verification
 
-183 tests. The CPM tests use networks whose answers can be checked by hand, which is the
+274 tests. The CPM tests use networks whose answers can be checked by hand, which is the
 only way to be confident about a scheduling engine. CI runs tests on Python 3.11/3.12/3.13,
 lints with ruff, and boots and seeds the application on every push.
 
@@ -193,6 +193,17 @@ every machine on every dashboard. The demo fleet reads 6.9% to 100% across six m
 status, voids in error while keeping the row, and buckets aged receivables. This is
 bookkeeping, not card processing — see item 4 below.
 
+**File exchange.** `core/exchange.py` holds a format-neutral schedule model;
+`core/xer.py` and `core/mspdi.py` read and write Primavera XER and Microsoft Project XML.
+Both are pure Python. Binary `.mpp` can be read through the optional MPXJ package but
+cannot be written by any available library, so MSPDI is the Microsoft export path.
+
+The salvage assessment of the old `import_utils.py` proved right: the tokenizer approach
+was sound and the field mapping was not. The rewrite fixes what that version got wrong —
+`PR_SS` relationship prefixes, hours-per-day from the calendar rather than a hardcoded 8,
+zero-duration milestones, and costs read from `TASKRSRC` rather than `TASK`. Round trips
+are tested by asserting the computed schedule does not move.
+
 **Whole classes of latent breakage.** Building the above surfaced defects nothing had
 ever exercised: nine views rendered templates that were never written; six templates
 called `url_for` on endpoints that had been renamed or never existed, which raises
@@ -206,10 +217,8 @@ not exist. `tests/test_templates.py` now asserts every rendered template resolve
 1. **Schedule quality in the UI.** A grade badge on every project, a drill-down naming
    each failing activity, and a trend across baseline revisions. Everything behind it is
    computed; nothing surfaces it yet. This is the feature people would pay for.
-2. **Import P6 and MS Project.** Nothing serious enters through a web form. `.xer` via
-   [PyP6Xer](https://pypi.org/project/PyP6Xer/) or the broader
-   [MPXJ](https://www.mpxj.org/) for `.mpp`, `.xml` and `.pmxml`. Without an import path
-   the platform cannot touch a real project.
+2. **Schedule comparison between baselines.** The snapshots are stored; diffing them —
+   what moved, what was added, what logic changed — is where delay analysis starts.
 3. **Adopt Flask-Migrate properly.** `flask db init` and a baseline migration; remove the
    remaining reliance on `create_all` outside tests. This matters more now that the schema
    has grown new tables and columns.
