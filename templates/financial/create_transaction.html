@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}New Transaction{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('financial.transaction_list') }}">Transactions</a></li>
+                    <li class="breadcrumb-item active">New</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-0">New transaction</h1>
+        </div>
+    </div>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="row g-4">
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header"><h2 class="h6 mb-0">Details</h2></div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="transaction_type">Type</label>
+                                <select class="form-select" id="transaction_type" name="transaction_type" required>
+                                    {% for kind in transaction_types %}
+                                    <option value="{{ kind.value }}">{{ kind.value|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="amount">Amount</label>
+                                <input type="number" step="0.01" min="0.01" class="form-control font-monospace"
+                                       id="amount" name="amount" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="transaction_date">Date</label>
+                                <input type="date" class="form-control" id="transaction_date" name="transaction_date"
+                                       value="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="expense_category">Category</label>
+                                <select class="form-select" id="expense_category" name="expense_category">
+                                    <option value="">Uncategorised</option>
+                                    {% for category in expense_categories %}
+                                    <option value="{{ category.value }}">
+                                        {{ category.value|replace('_', ' ')|title }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="description">Description</label>
+                                <input type="text" class="form-control" id="description" name="description" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="card mb-4">
+                    <div class="card-header"><h2 class="h6 mb-0">Allocation</h2></div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label" for="project_id">Project</label>
+                            <select class="form-select" id="project_id" name="project_id">
+                                <option value="">Not project-specific</option>
+                                {% for project in projects %}
+                                <option value="{{ project.id }}">{{ project.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">
+                                Allocating spend to a project is what makes budget utilisation
+                                and cost variance measurable.
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="vendor_customer_name">Vendor or customer</label>
+                            <input type="text" class="form-control" id="vendor_customer_name" name="vendor_customer_name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="payment_method">Payment method</label>
+                            <select class="form-select" id="payment_method" name="payment_method">
+                                <option value="">Not recorded</option>
+                                {% for method in payment_methods %}
+                                <option value="{{ method.value }}">{{ method.value|replace('_', ' ')|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="payment_reference">Payment reference</label>
+                            <input type="text" class="form-control" id="payment_reference" name="payment_reference">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label" for="reference_number">Internal reference</label>
+                            <input type="text" class="form-control" id="reference_number" name="reference_number">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">Create transaction</button>
+                <a href="{{ url_for('financial.transaction_list') }}" class="btn btn-link w-100 mt-2">Cancel</a>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

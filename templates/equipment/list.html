@@ -222,7 +222,7 @@
                                     <td>
                                         {% if equipment.current_project %}
                                             <small class="text-muted">Project:</small><br>
-                                            <a href="{{ url_for('projects.detail', project_id=equipment.current_project.id) }}">
+                                            <a href="{{ url_for('projects.project_detail', project_id=equipment.current_project.id) }}">
                                                 {{ equipment.current_project.name[:20] }}...
                                             </a>
                                         {% elif equipment.assigned_to_user %}

@@ -150,63 +150,93 @@ the assessment has real defects to find — it grades **F (54.5%)** and names ea
 
 ### Verification
 
-73 tests. The CPM tests use networks whose answers can be checked by hand, which is the
+183 tests. The CPM tests use networks whose answers can be checked by hand, which is the
 only way to be confident about a scheduling engine. CI runs tests on Python 3.11/3.12/3.13,
 lints with ruff, and boots and seeds the application on every push.
 
-## 5. What comes next
+## 5. Built since — measurement replacing assertion
 
-### Near term — finish the schedule-quality story
+A second pass replaced the parts that returned constants.
 
-1. **Record baseline and actual dates.** Add `baseline_start`, `baseline_finish`,
-   `actual_start`, `actual_finish` to `Task`, plus a `ScheduleBaseline` table. This alone
-   unlocks DCMA checks 9, 11 and 14 and makes Baseline Execution Index and schedule
-   variance computable. *This is the single highest-value change remaining.*
-2. **Schedule quality in the UI.** A grade badge on every project, a drill-down naming
-   each failing activity, and a trend line across submissions. This is the feature people
-   would pay for and it is nearly complete already.
-3. **Import P6 and MS Project.** Nothing serious enters through a web form. `.xer` via
+**Baselines and actuals.** `Task` gained `baseline_start/finish/duration` and
+`actual_start/finish`; `Project` gained a `data_date`, because an activity is late only
+with respect to a reporting date. `ScheduleBaseline` snapshots the plan for later
+revision comparison and denormalises onto `Task` so "is this late?" stays a column read.
+All fourteen DCMA checks now run on a project that carries the data — and still report as
+skipped, correctly, on one that does not.
+
+`core/progress.py` computes Baseline Execution Index, finish variance and forecast
+slippage. Its "behind" set is deliberately broader than DCMA check 11, which counts only
+completed-but-late activities: work that was due and never started is invisible to that
+check and is the more urgent problem.
+
+**Monte Carlo risk.** `core/risk.py` samples durations from three-point estimates and
+reruns CPM, reporting P10/P50/P80/P90, the measured probability of meeting the
+deterministic date, and a criticality index per activity. PERT and triangular
+distributions, seeded for reproducibility. On the demo project the deterministic 271-day
+duration has a **2% chance** of being met and P80 is 294 days — the gap is the entire
+argument for running it.
+
+`_ai_completion_prediction` previously divided completed tasks by elapsed days and
+multiplied by a flat 1.2 if anything was overdue, reporting a hardcoded confidence of
+0.75. Task-count velocity ignores the logic network: finishing twenty activities off the
+critical path says nothing about the finish date. It now runs the simulation, and the
+confidence figure is the measured proportion of runs that met the date. The "±15%"
+interval and "Medium" accuracy became a band derived from the simulation's own spread and
+a reliability grade taken from the schedule's DCMA score.
+
+**Equipment.** `EquipmentUsageLog` and `MaintenanceRecord` exist, so
+`Equipment.utilization_rate` is measured over a window instead of returning `75.5` for
+every machine on every dashboard. The demo fleet reads 6.9% to 100% across six machines.
+
+**Payments.** `services/billing.py` records payments, tracks balances, derives invoice
+status, voids in error while keeping the row, and buckets aged receivables. This is
+bookkeeping, not card processing — see item 4 below.
+
+**Whole classes of latent breakage.** Building the above surfaced defects nothing had
+ever exercised: nine views rendered templates that were never written; six templates
+called `url_for` on endpoints that had been renamed or never existed, which raises
+BuildError and fails the entire page; two scheduling templates read variables their views
+never passed; four financial routes filtered on `Project.is_active`, a column that does
+not exist. `tests/test_templates.py` now asserts every rendered template resolves, every
+`url_for` endpoint is registered, and every main page returns 200.
+
+## 6. What comes next
+
+1. **Schedule quality in the UI.** A grade badge on every project, a drill-down naming
+   each failing activity, and a trend across baseline revisions. Everything behind it is
+   computed; nothing surfaces it yet. This is the feature people would pay for.
+2. **Import P6 and MS Project.** Nothing serious enters through a web form. `.xer` via
    [PyP6Xer](https://pypi.org/project/PyP6Xer/) or the broader
-   [MPXJ](https://www.mpxj.org/) for `.mpp`, `.xml`, and `.pmxml`. Without an import path
+   [MPXJ](https://www.mpxj.org/) for `.mpp`, `.xml` and `.pmxml`. Without an import path
    the platform cannot touch a real project.
-4. **Adopt Flask-Migrate properly.** `flask db init` and a baseline migration; remove the
-   remaining reliance on `create_all` outside tests.
-
-### Medium term — earn the "AI" in the name
-
-5. **Monte Carlo risk analysis.** Three-point duration estimates plus 10,000 iterations
-   over the existing engine produces a P50/P80 completion date and a criticality index per
-   activity. Deterministic, explainable, needs no external service, and is the credible
-   version of "predictive analytics" — the current `azure_ai/predictive_analytics.py`
-   returns hardcoded values.
-6. **Resource-levelled scheduling (RCPSP).** The optimiser currently emits generic advice
-   ("consider dynamic resource allocation"). A real serial-schedule-generation heuristic
-   over the existing resource assignments would produce actual levelled dates.
-7. **Schedule comparison.** Diff two revisions: what moved, what was added, what logic
-   changed. Delay analysis is where the money is in construction, and it is pure
-   computation over data already held.
-
-### Ongoing — the parts that were never real
-
-8. **Retire or finish the facade.** `blueprints/equipment_management.py` returns
-   placeholder maintenance and utilisation data; `Equipment.utilization_rate` returns a
-   hardcoded `75.5`; the financial module documents "Stripe integration in progress" with
-   no implementation. Each should either be built or removed. Shipping a dashboard of
-   invented numbers is worse than shipping nothing.
-9. **Resolve the licensing contradiction.** The README claims "proprietary software
+3. **Adopt Flask-Migrate properly.** `flask db init` and a baseline migration; remove the
+   remaining reliance on `create_all` outside tests. This matters more now that the schema
+   has grown new tables and columns.
+4. **Card processing, or an explicit decision not to.** Payments are recorded, not taken.
+   Actually taking money needs key management, webhook reconciliation and PCI scope — a
+   different problem, deliberately not attempted rather than half-built.
+5. **Resource-levelled scheduling (RCPSP).** The optimiser still emits generic advice
+   ("consider dynamic resource allocation") where a serial-schedule-generation heuristic
+   over existing assignments would produce real levelled dates.
+6. **Schedule comparison between baselines.** The snapshots are stored; diffing them —
+   what moved, what was added, what logic changed — is where delay analysis starts, and
+   delay analysis is where the money is in construction.
+7. **The remaining facade.** `reports/executive_dashboard.py` generates its revenue trends
+   and geographic breakdown. Those payloads now carry a `simulated` flag so the UI can
+   label them, but generated figures in an executive dashboard should be built or removed.
+   Seven admin, Azure and project-template pages still render templates that do not exist.
+8. **Resolve the licensing contradiction.** The README claimed "proprietary software
    developed for Balfour Beatty US. All rights reserved.", but the repository is public
    with no `LICENSE` file. Under GitHub's terms a public repo without a license grants no
    rights to anyone — so it is neither usefully open nor properly protected, and the
-   Balfour Beatty attribution on a personally owned repository is a claim worth checking
-   before it is published further. **This needs an owner decision**, so no license file has
-   been added. Options: (a) add a real open-source license and drop the proprietary
-   language, (b) keep it proprietary and make the repository private, or (c) keep it public
-   with an explicit "all rights reserved, source-available for review" notice.
-10. **Broaden test coverage.** The financial, equipment, and reporting blueprints have
-    none. Tenant-isolation tests in particular should cover every blueprint, not just the
-    two now tested.
+   Balfour Beatty attribution on a personally owned repository is worth checking before it
+   is published further. **This needs an owner decision**, so no license file has been
+   added. Options: (a) add a real open-source license and drop the proprietary language,
+   (b) keep it proprietary and make the repository private, or (c) keep it public with an
+   explicit "all rights reserved, source-available for review" notice.
 
-## 6. Positioning
+## 7. Positioning
 
 The honest one-line description of what this should be:
 

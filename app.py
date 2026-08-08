@@ -208,11 +208,14 @@ def create_app(config_class=None):
     app.register_blueprint(main_bp)
 
     # Add datetime to template context
-    from datetime import datetime
+    from datetime import date, datetime, timedelta
 
     @app.context_processor
     def utility_processor():
-        return {"datetime": datetime}
+        # Templates already used date.today() and timedelta without either
+        # being injected, so Jinja resolved them to Undefined and the page
+        # raised UndefinedError on render.
+        return {"datetime": datetime, "date": date, "timedelta": timedelta}
 
     # Setup enterprise features
     setup_enterprise_features(app)

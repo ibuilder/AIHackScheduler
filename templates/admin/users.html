@@ -135,9 +135,13 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-outline-primary" title="Edit User">
+                                            {# Editing a user has no route and no page. The link to it
+                                               raised a BuildError, which broke this whole page rather
+                                               than just the button. Disabled until the feature exists. #}
+                                            <button type="button" class="btn btn-outline-secondary" disabled
+                                                    title="Editing users is not implemented yet">
                                                 <i class="fas fa-edit"></i>
-                                            </a>
+                                            </button>
                                             {% if user.id != current_user.id %}
                                                 {% if user.is_active %}
                                                     <button class="btn btn-outline-warning deactivate-user" data-user-id="{{ user.id }}" data-username="{{ user.username }}" title="Deactivate User">

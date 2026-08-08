@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}{{ invoice.invoice_number }} - Invoice{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('financial.invoice_list') }}">Invoices</a></li>
+                    <li class="breadcrumb-item active">{{ invoice.invoice_number }}</li>
+                </ol>
+            </nav>
+
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h1 class="h3 mb-0">{{ invoice.invoice_number }}</h1>
+                    <p class="text-muted mb-0">{{ invoice.client_name }}</p>
+                </div>
+                <div>
+                    {% set badge = {
+                        'draft': 'secondary', 'sent': 'info', 'viewed': 'info',
+                        'partial': 'warning', 'paid': 'success',
+                        'overdue': 'danger', 'cancelled': 'secondary'
+                    } %}
+                    <span class="badge bg-{{ badge.get(invoice.status.value, 'secondary') }} fs-6">
+                        {{ invoice.status.value|replace('_', ' ')|title }}
+                    </span>
+                    {% if invoice.days_overdue %}
+                        <span class="badge bg-danger fs-6">{{ invoice.days_overdue }} days overdue</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <!-- Line items -->
+            <div class="card mb-4">
+                <div class="card-header"><h2 class="h6 mb-0">Line items</h2></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Unit price</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in invoice.invoice_items %}
+                                <tr>
+                                    <td>{{ item.description }}</td>
+                                    <td class="text-end font-monospace">{{ '%.2f'|format(item.quantity) }}</td>
+                                    <td class="text-end font-monospace">{{ '%.2f'|format(item.unit_price) }}</td>
+                                    <td class="text-end font-monospace">{{ '%.2f'|format(item.line_total) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-muted text-center py-4">No line items recorded.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payments -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h6 mb-0">Payments received</h2>
+                    <span class="text-muted small">{{ payments|length }} recorded</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Number</th>
+                                    <th>Date</th>
+                                    <th>Method</th>
+                                    <th>Reference</th>
+                                    <th class="text-end">Amount</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for payment in payments %}
+                                <tr {% if payment.status.value == 'cancelled' %}class="text-muted text-decoration-line-through"{% endif %}>
+                                    <td class="font-monospace">{{ payment.payment_number }}</td>
+                                    <td>{{ payment.payment_date }}</td>
+                                    <td>{{ payment.payment_method.value|replace('_', ' ')|title }}</td>
+                                    <td>{{ payment.reference_number or '—' }}</td>
+                                    <td class="text-end font-monospace">{{ '%.2f'|format(payment.amount) }}</td>
+                                    <td>{{ payment.status.value|title }}</td>
+                                    <td class="text-end">
+                                        {% if payment.status.value == 'completed' %}
+                                        <form method="post"
+                                              action="{{ url_for('financial.void_invoice_payment', payment_id=payment.id) }}"
+                                              onsubmit="return confirm('Void {{ payment.payment_number }}? The record is kept for the audit trail.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Void</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="7" class="text-muted text-center py-4">Nothing received yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Balance -->
+            <div class="card mb-4">
+                <div class="card-header"><h2 class="h6 mb-0">Balance</h2></div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-7 fw-normal text-muted">Subtotal</dt>
+                        <dd class="col-5 text-end font-monospace">{{ '%.2f'|format(invoice.subtotal) }}</dd>
+
+                        {% if invoice.discount_amount %}
+                        <dt class="col-7 fw-normal text-muted">Discount</dt>
+                        <dd class="col-5 text-end font-monospace">−{{ '%.2f'|format(invoice.discount_amount) }}</dd>
+                        {% endif %}
+
+                        <dt class="col-7 fw-normal text-muted">Tax</dt>
+                        <dd class="col-5 text-end font-monospace">{{ '%.2f'|format(invoice.tax_amount or 0) }}</dd>
+
+                        <dt class="col-7 border-top pt-2">Total</dt>
+                        <dd class="col-5 text-end font-monospace border-top pt-2">{{ '%.2f'|format(invoice.total_amount) }}</dd>
+
+                        <dt class="col-7 fw-normal text-success">Paid</dt>
+                        <dd class="col-5 text-end font-monospace text-success">{{ '%.2f'|format(invoice.amount_paid) }}</dd>
+
+                        <dt class="col-7 fw-bold border-top pt-2">Outstanding</dt>
+                        <dd class="col-5 text-end font-monospace fw-bold border-top pt-2">{{ '%.2f'|format(invoice.balance_due) }}</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Record a payment -->
+            {% if invoice.status.value not in ('draft', 'cancelled') and not invoice.is_settled %}
+            <div class="card">
+                <div class="card-header"><h2 class="h6 mb-0">Record a payment</h2></div>
+                <div class="card-body">
+                    <form method="post" action="{{ url_for('financial.record_invoice_payment', invoice_id=invoice.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div class="mb-3">
+                            <label class="form-label" for="amount">Amount</label>
+                            <input type="number" step="0.01" min="0.01" class="form-control font-monospace"
+                                   id="amount" name="amount"
+                                   value="{{ '%.2f'|format(invoice.balance_due) }}" required>
+                            <div class="form-text">Outstanding balance is {{ '%.2f'|format(invoice.balance_due) }}.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="payment_date">Date received</label>
+                            <input type="date" class="form-control" id="payment_date" name="payment_date"
+                                   value="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="payment_method">Method</label>
+                            <select class="form-select" id="payment_method" name="payment_method" required>
+                                {% for method in payment_methods %}
+                                <option value="{{ method.value }}">{{ method.value|replace('_', ' ')|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="reference_number">Reference</label>
+                            <input type="text" class="form-control" id="reference_number"
+                                   name="reference_number" placeholder="Cheque or transfer reference">
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="allow_overpayment"
+                                   name="allow_overpayment" value="yes">
+                            <label class="form-check-label small text-muted" for="allow_overpayment">
+                                Allow more than the outstanding balance
+                            </label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Record payment</button>
+                    </form>
+                </div>
+            </div>
+            {% elif invoice.is_settled %}
+            <div class="alert alert-success mb-0">This invoice is settled in full.</div>
+            {% endif %}
+
+            <!-- Client -->
+            <div class="card mt-4">
+                <div class="card-header"><h2 class="h6 mb-0">Client</h2></div>
+                <div class="card-body">
+                    <p class="mb-1 fw-semibold">{{ invoice.client_name }}</p>
+                    {% if invoice.client_email %}<p class="mb-1 small">{{ invoice.client_email }}</p>{% endif %}
+                    {% if invoice.client_address %}<p class="mb-0 small text-muted">{{ invoice.client_address }}</p>{% endif %}
+                    <hr>
+                    <p class="mb-1 small"><span class="text-muted">Issued</span> {{ invoice.issue_date }}</p>
+                    <p class="mb-0 small"><span class="text-muted">Due</span> {{ invoice.due_date }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

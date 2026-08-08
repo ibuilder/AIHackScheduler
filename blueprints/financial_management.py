@@ -24,6 +24,13 @@ from models import (
     Transaction,
     TransactionType,
 )
+from services.billing import (
+    BillingError,
+    aged_receivables,
+    record_payment,
+    refresh_overdue,
+    void_payment,
+)
 
 financial_bp = Blueprint("financial", __name__)
 
@@ -120,7 +127,10 @@ def transaction_list():
     )
 
     # Get projects for filter dropdown
-    projects = Project.query.filter_by(company_id=current_user.company_id, is_active=True).all()
+    # Project has a status column, not is_active. Filtering on a column
+    # that does not exist raised InvalidRequestError, so every one of
+    # these routes returned 500 before reaching its template.
+    projects = Project.query.filter_by(company_id=current_user.company_id, status="active").all()
 
     return render_template(
         "financial/transactions.html",
@@ -201,7 +211,10 @@ def create_transaction():
             flash("Error creating transaction. Please try again.", "error")
 
     # Get data for form dropdowns
-    projects = Project.query.filter_by(company_id=current_user.company_id, is_active=True).all()
+    # Project has a status column, not is_active. Filtering on a column
+    # that does not exist raised InvalidRequestError, so every one of
+    # these routes returned 500 before reaching its template.
+    projects = Project.query.filter_by(company_id=current_user.company_id, status="active").all()
 
     return render_template(
         "financial/create_transaction.html",
@@ -248,7 +261,10 @@ def invoice_list():
     )
 
     # Get projects for filter dropdown
-    projects = Project.query.filter_by(company_id=current_user.company_id, is_active=True).all()
+    # Project has a status column, not is_active. Filtering on a column
+    # that does not exist raised InvalidRequestError, so every one of
+    # these routes returned 500 before reaching its template.
+    projects = Project.query.filter_by(company_id=current_user.company_id, status="active").all()
 
     # Calculate summary statistics
     stats = {
@@ -354,7 +370,10 @@ def create_invoice():
             flash("Error creating invoice. Please try again.", "error")
 
     # Get projects for dropdown
-    projects = Project.query.filter_by(company_id=current_user.company_id, is_active=True).all()
+    # Project has a status column, not is_active. Filtering on a column
+    # that does not exist raised InvalidRequestError, so every one of
+    # these routes returned 500 before reaching its template.
+    projects = Project.query.filter_by(company_id=current_user.company_id, status="active").all()
 
     return render_template("financial/create_invoice.html", projects=projects)
 
@@ -367,12 +386,22 @@ def invoice_detail(invoice_id):
         id=invoice_id, company_id=current_user.company_id
     ).first_or_404()
 
-    # Get payments for this invoice
+    # Overdue is a function of today's date, so it has to be re-derived on
+    # read rather than set once when the invoice was created.
+    if invoice.derive_status() != invoice.status:
+        invoice.status = invoice.derive_status()
+        db.session.commit()
+
     payments = (
         Payment.query.filter_by(invoice_id=invoice_id).order_by(Payment.payment_date.desc()).all()
     )
 
-    return render_template("financial/invoice_detail.html", invoice=invoice, payments=payments)
+    return render_template(
+        "financial/invoice_detail.html",
+        invoice=invoice,
+        payments=payments,
+        payment_methods=PaymentMethod,
+    )
 
 
 # Helper functions
@@ -541,3 +570,91 @@ def financial_dashboard_stats():
     except Exception as e:
         logging.error(f"Error getting financial stats: {str(e)}")
         return jsonify({"error": "Failed to load statistics"}), 500
+
+
+# ── Payments ──────────────────────────────────────────────────────────────
+
+
+@financial_bp.route("/invoices/<int:invoice_id>/payments", methods=["POST"])
+@login_required
+def record_invoice_payment(invoice_id):
+    """Record a payment received against an invoice."""
+    invoice = Invoice.query.filter_by(
+        id=invoice_id, company_id=current_user.company_id
+    ).first_or_404()
+
+    try:
+        method = PaymentMethod(request.form.get("payment_method", ""))
+    except ValueError:
+        flash("Select a valid payment method", "error")
+        return redirect(url_for("financial.invoice_detail", invoice_id=invoice.id))
+
+    try:
+        payment_date = datetime.strptime(request.form.get("payment_date", ""), "%Y-%m-%d").date()
+    except ValueError:
+        flash("Enter a valid payment date", "error")
+        return redirect(url_for("financial.invoice_detail", invoice_id=invoice.id))
+
+    try:
+        payment = record_payment(
+            invoice,
+            request.form.get("amount"),
+            payment_date=payment_date,
+            method=method,
+            company_id=current_user.company_id,
+            reference=(request.form.get("reference_number") or "")[:200],
+            payer_name=(request.form.get("payer_name") or "")[:200],
+            processed_by_id=current_user.id,
+            notes=(request.form.get("notes") or "")[:2000],
+            allow_overpayment=request.form.get("allow_overpayment") == "yes",
+        )
+    except BillingError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("financial.invoice_detail", invoice_id=invoice.id))
+
+    audit_logger.log_action(
+        action="payment_recorded",
+        resource_type="invoice",
+        resource_id=invoice.id,
+        details=f"{payment.payment_number} for {payment.amount}",
+    )
+    flash(
+        f"Recorded {payment.amount} against {invoice.invoice_number}. "
+        f"Balance now {invoice.balance_due}.",
+        "success",
+    )
+    return redirect(url_for("financial.invoice_detail", invoice_id=invoice.id))
+
+
+@financial_bp.route("/payments/<int:payment_id>/void", methods=["POST"])
+@login_required
+def void_invoice_payment(payment_id):
+    """Reverse a payment recorded in error. The row is kept for the audit trail."""
+    payment = Payment.query.filter_by(
+        id=payment_id, company_id=current_user.company_id
+    ).first_or_404()
+
+    try:
+        void_payment(payment, reason=(request.form.get("reason") or "")[:2000])
+    except BillingError as exc:
+        flash(str(exc), "error")
+    else:
+        audit_logger.log_action(
+            action="payment_voided",
+            resource_type="payment",
+            resource_id=payment.id,
+            details=f"{payment.payment_number} voided",
+        )
+        flash(f"Voided {payment.payment_number}", "success")
+
+    if payment.invoice_id:
+        return redirect(url_for("financial.invoice_detail", invoice_id=payment.invoice_id))
+    return redirect(url_for("financial.invoice_list"))
+
+
+@financial_bp.route("/api/financial/aged-receivables")
+@login_required
+def api_aged_receivables():
+    """Outstanding balances bucketed by how long they have been overdue."""
+    refresh_overdue(current_user.company_id)
+    return jsonify(aged_receivables(current_user.company_id))

@@ -148,7 +148,7 @@
                                 <label class="form-label">Assigned Project</label>
                                 <div class="input-group">
                                     <input type="text" class="form-control" value="{{ equipment.current_project.name }}" readonly>
-                                    <a href="{{ url_for('projects.detail', project_id=equipment.current_project.id) }}" class="btn btn-outline-primary">
+                                    <a href="{{ url_for('projects.project_detail', project_id=equipment.current_project.id) }}" class="btn btn-outline-primary">
                                         <i class="fas fa-external-link-alt"></i>
                                     </a>
                                 </div>

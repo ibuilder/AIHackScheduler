@@ -66,12 +66,41 @@ def linear_view(project_id):
                 "station_start": task.station_start,
                 "station_end": task.station_end,
                 "location": task.location,
+                "duration": task.duration,
                 "progress": task.progress,
                 "status": task.status.name,
             }
         )
 
-    return render_template("scheduling/linear.html", project=project, tasks=linear_tasks)
+    # The template reads five summary values the view never supplied, so Jinja
+    # resolved them to Undefined and `min_location|round(1)` raised TypeError.
+    stations = [
+        value
+        for task in linear_tasks
+        for value in (task["station_start"], task["station_end"])
+        if value is not None
+    ]
+    min_location = min(stations) if stations else 0.0
+    max_location = max(stations) if stations else 0.0
+    total_distance = max_location - min_location
+
+    # Production rate in distance units per working day, across the whole
+    # stretch of work — the headline number a linear schedule exists to show.
+    total_days = sum(task["duration"] or 0 for task in linear_tasks)
+    avg_production_rate = (total_distance / total_days) if total_days else 0.0
+
+    unique_locations = sorted({task["location"] for task in linear_tasks if task["location"]})
+
+    return render_template(
+        "scheduling/linear.html",
+        project=project,
+        tasks=linear_tasks,
+        min_location=min_location,
+        max_location=max_location,
+        total_distance=total_distance,
+        avg_production_rate=avg_production_rate,
+        unique_locations=unique_locations,
+    )
 
 
 @scheduling_bp.route("/pull-planning/<int:project_id>")
@@ -110,8 +139,25 @@ def pull_planning_view(project_id):
             }
         )
 
+    # As with the linear view, the template reads summary values the view
+    # never passed, so Jinja resolved them to Undefined and the round filter
+    # raised TypeError.
+    all_tasks = [task for week_tasks in pull_plan_weeks.values() for task in week_tasks]
+    total_tasks_count = len(all_tasks)
+    completed = sum(1 for task in all_tasks if task["status"] == "COMPLETED")
+    completion_percentage = (completed / total_tasks_count * 100) if total_tasks_count else 0.0
+
+    # A constraint is anything blocking a task from being made ready — the
+    # central idea of pull planning.
+    constraint_count = sum(len(task["constraints"] or []) for task in all_tasks)
+
     return render_template(
-        "scheduling/pull_planning.html", project=project, pull_plan_weeks=pull_plan_weeks
+        "scheduling/pull_planning.html",
+        project=project,
+        pull_plan_weeks=pull_plan_weeks,
+        total_tasks_count=total_tasks_count,
+        completion_percentage=completion_percentage,
+        constraint_count=constraint_count,
     )
 
 
