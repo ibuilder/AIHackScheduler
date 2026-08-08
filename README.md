@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-183%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
@@ -252,11 +253,17 @@ Issues and pull requests are welcome. Please keep `core/` free of Flask and SQLA
 imports, and add a hand-checkable test for any change to the scheduling maths — a
 scheduling engine is only trustworthy if its answers can be verified by hand.
 
+By contributing you agree that your contribution is licensed under the MIT licence.
+
 ## License
 
-**Not yet settled.** The repository is public but carries no `LICENSE` file, which under
-GitHub's terms grants no usage rights to anyone. Resolving this is a decision for the
-repository owner; see item 9 in [`PLAN.md`](PLAN.md) for the options.
+[MIT](LICENSE). Use it, fork it, ship it — the only condition is that the copyright notice
+travels with it.
+
+The repository previously described itself as proprietary software developed for Balfour
+Beatty US while carrying no `LICENSE` file at all, which granted nobody any rights and
+asserted an affiliation the code does not evidence. Both are resolved: the licence is MIT
+and the branding is the project's own.
 
 ---
 

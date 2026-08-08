@@ -81,3 +81,34 @@ jobs:
         run: |
           flask --app app init-db
           flask --app app seed-demo
+
+  package:
+    name: Package builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # The Dockerfile installs the project with `pip install .`, so a
+      # pyproject that cannot build breaks the image without breaking any test.
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: Check the licence metadata survived
+        run: |
+          python - <<'EOF'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          archive = zipfile.ZipFile(wheel)
+          name = [n for n in archive.namelist() if n.endswith("METADATA")][0]
+          metadata = archive.read(name).decode()
+          assert "License-Expression: MIT" in metadata, metadata
+          assert any("LICENSE" in n for n in archive.namelist()), "LICENSE not bundled"
+          print(f"{wheel}: MIT, LICENSE bundled")
+          EOF
