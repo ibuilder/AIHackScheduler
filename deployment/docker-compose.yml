@@ -1,9 +1,21 @@
-version: '3.8'
+# Run from the repository root:
+#   docker compose -f deployment/docker-compose.yml up
+#
+# The build context is the repository root, not this directory, because the
+# Dockerfile installs the project with `pip install .` and needs pyproject.toml.
+#
+# This file previously also declared nginx, Prometheus and Grafana services that
+# mounted ./nginx/nginx.conf, ./monitoring/prometheus.yml and two Grafana
+# provisioning directories. None of those files exist in the repository, so
+# Docker created empty directories in their place and those containers failed to
+# start. They are omitted rather than left as scenery; bring them back alongside
+# the configuration they need.
 
 services:
-  # Main BBSchedule Application
   bbschedule:
-    build: .
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
     ports:
       - "5000:5000"
     environment:
@@ -11,12 +23,16 @@ services:
       - DATABASE_URL=postgresql://bbschedule:${DB_PASSWORD}@postgres:5432/bbschedule
       - REDIS_URL=redis://redis:6379
       - SESSION_SECRET=${SESSION_SECRET}
-      - POWERBI_CLIENT_ID=${POWERBI_CLIENT_ID}
-      - POWERBI_CLIENT_SECRET=${POWERBI_CLIENT_SECRET}
-      - POWERBI_TENANT_ID=${POWERBI_TENANT_ID}
+      - POWERBI_CLIENT_ID=${POWERBI_CLIENT_ID:-}
+      - POWERBI_CLIENT_SECRET=${POWERBI_CLIENT_SECRET:-}
+      - POWERBI_TENANT_ID=${POWERBI_TENANT_ID:-}
+      # Set SEED_DEMO=1 to load the demo project on first start.
+      - SEED_DEMO=${SEED_DEMO:-0}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
@@ -28,7 +44,6 @@ services:
       retries: 3
       start_period: 40s
 
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     environment:
@@ -37,7 +52,6 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     restart: unless-stopped
@@ -47,7 +61,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis Cache & Session Store
   redis:
     image: redis:7-alpine
     ports:
@@ -55,97 +68,61 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
 
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/ssl:/etc/nginx/ssl
-      - ./static:/var/www/static
-    depends_on:
-      - bbschedule
-    restart: unless-stopped
-
-  # Background Task Worker (Celery)
+  # The Celery application lives at tasks.celery_config.celery_app. Both worker
+  # services previously named `app.celery`, which does not exist, so neither
+  # container could start.
   worker:
-    build: .
-    command: celery -A app.celery worker --loglevel=info
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    command: celery -A tasks.celery_config.celery_app worker --loglevel=info
     environment:
       - FLASK_ENV=production
       - DATABASE_URL=postgresql://bbschedule:${DB_PASSWORD}@postgres:5432/bbschedule
       - REDIS_URL=redis://redis:6379
       - SESSION_SECRET=${SESSION_SECRET}
+      # The web service owns schema creation; workers must not race it.
+      - SKIP_DB_INIT=1
     depends_on:
-      - postgres
-      - redis
+      bbschedule:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
 
-  # Celery Beat Scheduler
   scheduler:
-    build: .
-    command: celery -A app.celery beat --loglevel=info
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    command: celery -A tasks.celery_config.celery_app beat --loglevel=info
     environment:
       - FLASK_ENV=production
       - DATABASE_URL=postgresql://bbschedule:${DB_PASSWORD}@postgres:5432/bbschedule
       - REDIS_URL=redis://redis:6379
       - SESSION_SECRET=${SESSION_SECRET}
+      - SKIP_DB_INIT=1
     depends_on:
-      - postgres
-      - redis
+      bbschedule:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
-    restart: unless-stopped
-
-  # Monitoring with Prometheus
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
-
-  # Grafana for Visualization
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
-    depends_on:
-      - prometheus
     restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
-  prometheus_data:
-  grafana_data:
-
-networks:
-  default:
-    driver: bridge

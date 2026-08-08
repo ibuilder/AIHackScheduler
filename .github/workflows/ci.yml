@@ -82,6 +82,36 @@ jobs:
           flask --app app init-db
           flask --app app seed-demo
 
+  docker:
+    name: Image builds and the stack is valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The compose file previously mounted five configuration files that do
+      # not exist and named a Celery app that does not exist, so the stack
+      # could not come up. `config` resolves and validates it.
+      - name: Validate the compose stack
+        run: docker compose -f deployment/docker-compose.yml config >/dev/null
+        env:
+          DB_PASSWORD: ci
+          SESSION_SECRET: ci
+
+      # The image install failed outright once pyproject declared its packages
+      # explicitly, because the builder stage copied only pyproject.toml.
+      - name: Build the image
+        run: docker build -f deployment/Dockerfile -t bbschedule:ci .
+
+      - name: Entrypoint is present and executable
+        run: |
+          docker run --rm --entrypoint sh bbschedule:ci -c \
+            'test -x /app/deployment/entrypoint.sh && echo "entrypoint OK"'
+
+      - name: The Celery app the compose file names actually resolves
+        run: |
+          docker run --rm --entrypoint python bbschedule:ci -c \
+            'import tasks.celery_config as m; assert m.celery_app; print("celery_app OK")'
+
   package:
     name: Package builds
     runs-on: ubuntu-latest

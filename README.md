@@ -202,8 +202,27 @@ ruff check .              # lint
 ruff format .             # format
 ```
 
-CI runs tests on Python 3.11, 3.12 and 3.13, lints, and boots and seeds the application on
-every push.
+CI runs tests on Python 3.11, 3.12 and 3.13, lints, builds the wheel, and boots and seeds
+the application on every push.
+
+---
+
+## Deployment
+
+```bash
+docker compose -f deployment/docker-compose.yml up
+```
+
+Brings up the application, PostgreSQL, Redis and the Celery worker and beat scheduler. The
+build context is the repository root, so run it from there. Set `DB_PASSWORD` and
+`SESSION_SECRET` first; add `SEED_DEMO=1` to load the demo project on first start.
+
+Schema creation is deliberate rather than an import side effect — `db.create_all()` used to
+run whenever `app.py` was imported, which raced across gunicorn workers. The container
+entrypoint creates it before starting, retrying until PostgreSQL is accepting queries.
+Workers run with `SKIP_DB_INIT=1` so they cannot race the web process.
+
+`deployment/azure-deploy.yml` describes the same stack as Azure Container Apps.
 
 ---
 
