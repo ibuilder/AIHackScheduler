@@ -12,8 +12,12 @@ from typing import Any
 import requests
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
+from sqlalchemy import func
 
-from models import Project, Task, TaskStatus
+from extensions import db
+from models import Project, Task, TaskStatus, Transaction, TransactionType
+from services.schedule_analysis import health_check
+from services.schedule_risk import simulate_project
 
 azure_ai_bp = Blueprint("azure_ai", __name__)
 
@@ -162,9 +166,27 @@ class AzureAIPredictiveAnalytics:
         )
         days_remaining = (project.end_date - date.today()).days if project.end_date else 0
 
-        # Budget analysis
-        budget_utilized = 0.0  # Would be calculated from actual cost tracking
-        budget_variance = 0.0  # Positive = over budget, negative = under budget
+        # Budget analysis, from the general ledger rather than a stubbed zero.
+        # Expenses are what has actually been spent against this project;
+        # "utilised" is that spend as a percentage of the approved budget.
+        spend = (
+            db.session.query(func.coalesce(func.sum(Transaction.amount), 0))
+            .filter(
+                Transaction.project_id == project.id,
+                Transaction.transaction_type == TransactionType.EXPENSE,
+            )
+            .scalar()
+        )
+        actual_spend = float(spend or 0)
+
+        # Both are fractions, not percentages — the risk scoring and
+        # recommendation thresholds below all multiply by 100 themselves.
+        budget_utilized = (actual_spend / project.budget) if project.budget else 0.0
+
+        # Positive means over budget for the progress achieved: spending 60% of
+        # the budget to deliver 40% of the work is a 0.2 overrun, visible long
+        # before the total budget is exhausted.
+        budget_variance = budget_utilized - (progress_percentage / 100)
 
         return {
             "project": {
@@ -189,6 +211,7 @@ class AzureAIPredictiveAnalytics:
                 "days_remaining": days_remaining,
                 "budget_utilized": budget_utilized,
                 "budget_variance": budget_variance,
+                "actual_spend": actual_spend,
             },
             "tasks": [
                 {
@@ -398,16 +421,47 @@ class AzureAIPredictiveAnalytics:
         return recommendations
 
     def _predict_outcomes(self, project_data: dict[str, Any]) -> dict[str, Any]:
-        """Predict project outcome probabilities"""
-        project_data["metrics"]
+        """Predict project outcome probabilities."""
         risk_scores = self._calculate_risk_scores(project_data)
 
-        # Calculate probabilities based on current metrics
+        # Budget and quality remain rule-based scores — explicit thresholds
+        # rather than measurement, which is what the data supports today.
         on_time_probability = max(0, min(100, 100 - risk_scores["schedule"] * 0.8))
         on_budget_probability = max(0, min(100, 100 - risk_scores["cost"] * 0.9))
         quality_probability = max(0, min(100, 100 - risk_scores["quality"] * 0.7))
 
-        # Overall success probability (all three factors)
+        # On-time probability is measurable rather than inferred from a risk
+        # score: it is the share of simulated runs that finish by the planned
+        # date. The confidence band comes from the simulation's own spread,
+        # and reliability is graded by the schedule's DCMA score, because a
+        # forecast built on a schedule that fails its logic checks is not
+        # worth more than the schedule under it.
+        project_id = project_data.get("project", {}).get("id")
+        simulation = simulate_project(project_id) if project_id else {"success": False}
+
+        if simulation.get("success"):
+            on_time_probability = simulation["confidence_in_deterministic"] * 100
+            spread_days = simulation["standard_deviation_days"]
+            confidence_interval = f"±{spread_days * 1.96:.0f} days (95%)"
+            basis = f"Monte Carlo, {simulation['iterations']} iterations"
+        else:
+            confidence_interval = None
+            basis = "Rule-based risk scoring; simulation unavailable"
+
+        reliability = "unknown"
+        if project_id:
+            health = health_check(project_id)
+            if health.get("success"):
+                grade = health["grade"]
+                reliability = {
+                    "A": "high",
+                    "B": "high",
+                    "C": "moderate",
+                    "D": "low",
+                    "F": "low",
+                }.get(grade, "unknown")
+                basis += f"; schedule quality grade {grade}"
+
         success_probability = (
             on_time_probability * on_budget_probability * quality_probability
         ) / 10000
@@ -417,39 +471,52 @@ class AzureAIPredictiveAnalytics:
             "on_budget_completion": round(on_budget_probability, 1),
             "quality_targets_met": round(quality_probability, 1),
             "overall_success": round(success_probability, 1),
-            "confidence_interval": "±15%",  # Estimated confidence interval
-            "prediction_accuracy": "Medium",  # Based on data quality
+            "confidence_interval": confidence_interval,
+            "prediction_basis": basis,
+            "schedule_reliability": reliability,
         }
 
     def _ai_completion_prediction(self, project_data: dict[str, Any]) -> dict[str, Any]:
-        """AI-based completion prediction"""
-        # Simplified AI prediction - in production this would use sophisticated ML models
-        metrics = project_data["metrics"]
+        """Completion prediction from a Monte Carlo run over the logic network.
 
-        # Calculate velocity (tasks completed per day)
-        velocity = metrics["completed_tasks"] / max(1, metrics["days_elapsed"])
-        remaining_tasks = metrics["total_tasks"] - metrics["completed_tasks"]
+        This used to divide completed tasks by elapsed days, multiply by a
+        flat 1.2 if anything was overdue, and report a hardcoded confidence of
+        0.75. Task-count velocity ignores the logic network entirely: finishing
+        twenty activities off the critical path says nothing about the finish
+        date, and the 0.75 was not measured from anything.
 
-        # Predict remaining days
-        predicted_days = remaining_tasks / max(0.1, velocity)
+        The simulation samples each activity's duration from a three-point
+        estimate and reruns CPM thousands of times, so the confidence figure is
+        the actual proportion of runs that met the date.
+        """
+        from services.schedule_risk import simulate_project
 
-        # Adjust for current trends
-        if metrics["overdue_tasks"] > 0:
-            predicted_days *= 1.2  # 20% delay factor
+        project_id = project_data.get("project", {}).get("id")
+        if project_id is None:
+            return {"error": "No project id available for simulation"}
 
-        predicted_completion = date.today() + timedelta(days=predicted_days)
+        simulation = simulate_project(project_id)
+        if not simulation.get("success"):
+            return simulation
 
+        percentiles = simulation["percentiles"]
         return {
-            "predicted_completion_date": predicted_completion.isoformat(),
-            "predicted_days_remaining": round(predicted_days),
-            "confidence": 0.75,
-            "velocity_analysis": {
-                "current_velocity": round(velocity, 2),
-                "required_velocity": round(remaining_tasks / max(1, metrics["days_remaining"]), 2),
-                "velocity_gap": "positive"
-                if velocity > (remaining_tasks / max(1, metrics["days_remaining"]))
-                else "negative",
+            "predicted_completion_date": simulation["dates"]["p80"],
+            "predicted_days_remaining": percentiles["p80"],
+            # The measured probability of meeting the deterministic CPM date,
+            # not an assumed constant.
+            "confidence": simulation["confidence_in_deterministic"],
+            "method": f"Monte Carlo, {simulation['iterations']} iterations",
+            "distribution": {
+                "deterministic": simulation["deterministic_duration_days"],
+                "p10": percentiles["p10"],
+                "p50": percentiles["p50"],
+                "p80": percentiles["p80"],
+                "p90": percentiles["p90"],
+                "standard_deviation_days": simulation["standard_deviation_days"],
             },
+            "dates": simulation["dates"],
+            "most_critical_activities": simulation["activities"][:5],
         }
 
     def _statistical_completion_prediction(self, project_data: dict[str, Any]) -> dict[str, Any]:
@@ -559,7 +626,9 @@ class AzureAIPredictiveAnalytics:
         Days Elapsed: {project_data["metrics"]["days_elapsed"]}
         Days Remaining: {project_data["metrics"]["days_remaining"]}
         Overdue Tasks: {project_data["metrics"]["overdue_tasks"]}
-        Budget Variance: {project_data["metrics"]["budget_variance"]:.1f}%
+        Budget Variance: {project_data["metrics"]["budget_variance"] * 100:.1f}%
+        Budget Utilised: {project_data["metrics"]["budget_utilized"] * 100:.1f}%
+        Actual Spend: {project_data["metrics"]["actual_spend"]:,.0f}
 
         Please identify:
         1. Top 3 risks with severity levels

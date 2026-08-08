@@ -194,6 +194,14 @@ def create_app(config_class=None):
     app.register_blueprint(financial_bp, url_prefix="/")
     app.register_blueprint(schedule_api_bp, url_prefix="/api/schedule")
 
+    # CSRF protection is built around form posts and cannot be satisfied by a
+    # JSON fetch carrying no hidden field. This blueprint is exempted and
+    # defended instead by the session cookie's SameSite=Lax policy, which stops
+    # a cross-site POST carrying credentials at all, plus the JSON body each
+    # mutating view requires — a cross-origin caller cannot set that
+    # content-type without a CORS preflight this application never answers.
+    csrf.exempt(schedule_api_bp)
+
     # Register main routes
     from routes import main_bp
 

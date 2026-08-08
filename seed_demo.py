@@ -24,6 +24,7 @@ from models import (
     Project,
     Resource,
     ResourceAssignment,
+    ScheduleBaseline,
     ScheduleType,
     Task,
     TaskDependency,
@@ -138,9 +139,23 @@ RESOURCE_PLAN = {
     "A700": "Site management",
 }
 
-# Activities already complete at the data date, with progress.
-COMPLETED = {"A100", "A110", "A120"}
-IN_PROGRESS = {"A200": 60.0, "A210": 25.0}
+# Where the project is reporting from, as a working-day offset from the start.
+# Roughly eleven weeks in — far enough for a baseline to have been tested by
+# reality, early enough that most of the job is ahead.
+DATA_DATE_OFFSET = 55
+
+# What actually happened, as working-day slip against the baseline finish.
+# A value of 0 means the activity finished exactly on its baseline date.
+# Activities absent from this map are neither started nor finished.
+ACTUAL_FINISH_SLIP = {
+    "A100": 0,  # mobilisation went to plan
+    "A120": 0,  # asbestos clearance came back on time
+    "A110": 4,  # demolition hit unrecorded services and ran four days over
+    "A200": 2,  # steel remediation absorbed part of that slip
+}
+
+# Started but not finished at the data date.
+IN_PROGRESS = {"A210": 25.0}
 
 
 def seed(reset: bool = True) -> Project:
@@ -201,6 +216,7 @@ def seed(reset: bool = True) -> Project:
         location="Springfield Business District",
         status="active",
         schedule_type=ScheduleType.GANTT,
+        data_date=calendar.date_for_offset(DATA_DATE_OFFSET),
     )
     db.session.add(project)
     db.session.flush()
@@ -226,10 +242,19 @@ def seed(reset: bool = True) -> Project:
         start = calendar.date_for_offset(computed.early_start)
         finish = calendar.finish_date_for(computed.early_start, duration)
 
-        if aid in COMPLETED:
+        # Baseline is the plan as first approved; the stored plan matches it
+        # here because nothing has been re-scheduled yet. Actuals are what
+        # reality did to it.
+        actual_start = actual_finish = None
+        if aid in ACTUAL_FINISH_SLIP:
             status, progress = TaskStatus.COMPLETED, 100.0
+            actual_start = start
+            actual_finish = calendar.date_for_offset(
+                computed.early_start + max(duration - 1, 0) + ACTUAL_FINISH_SLIP[aid]
+            )
         elif aid in IN_PROGRESS:
             status, progress = TaskStatus.IN_PROGRESS, IN_PROGRESS[aid]
+            actual_start = start
         else:
             status, progress = TaskStatus.NOT_STARTED, 0.0
 
@@ -243,6 +268,11 @@ def seed(reset: bool = True) -> Project:
             duration=duration,
             progress=progress,
             status=status,
+            baseline_start=start,
+            baseline_finish=finish,
+            baseline_duration=duration,
+            actual_start=actual_start,
+            actual_finish=actual_finish,
             priority="high" if computed.is_critical else "medium",
             constraints=(
                 {"must_start_on": calendar.date_for_offset(constraint).isoformat()}
@@ -279,11 +309,33 @@ def seed(reset: bool = True) -> Project:
             )
         )
 
+    # The baseline history record. Task.baseline_* is already populated above;
+    # this is the snapshot that makes revision comparison possible later.
+    db.session.add(
+        ScheduleBaseline(
+            project_id=project.id,
+            name="Contract baseline — rev A",
+            notes="Approved at contract award, before the demolition slip.",
+            snapshot={
+                str(task.id): {
+                    "start": task.baseline_start.isoformat(),
+                    "finish": task.baseline_finish.isoformat(),
+                    "duration": task.baseline_duration,
+                }
+                for task in tasks.values()
+            },
+            is_current=True,
+            set_by_id=user.id,
+        )
+    )
+
     db.session.commit()
 
+    complete = sum(1 for t in tasks.values() if t.actual_finish)
     print(f"Seeded '{project.name}' ({len(tasks)} activities, {len(RELATIONSHIPS)} links)")
     print(f"  Calculated duration : {result.project_duration} working days")
     print(f"  Planned finish      : {project.end_date}")
+    print(f"  Data date           : {project.data_date} ({complete} activities complete)")
     print(f"  Sign in as          : {DEMO_USERNAME} / {DEMO_PASSWORD}")
     return project
 

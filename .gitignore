@@ -25,6 +25,7 @@ coverage.xml
 htmlcov/
 
 # Local databases
+instance/
 *.db
 *.sqlite
 *.sqlite3

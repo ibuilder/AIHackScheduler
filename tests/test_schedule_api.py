@@ -75,15 +75,26 @@ def test_health_finds_the_defects_seeded_on_purpose(signed_in):
     assert "Resources" in failed
 
 
-def test_checks_needing_actuals_are_skipped(signed_in):
-    """The Task model records no actual or baseline finish dates, so these
-    checks must report as skipped rather than as passing."""
+def test_checks_are_skipped_when_a_project_has_no_baseline(signed_in, app_context):
+    """A project without baseline or actuals must report those checks as
+    skipped rather than passing them vacuously — the score is only as honest
+    as what it admits it could not measure."""
+    from extensions import db
+    from models import Task
+
     client, project, _ = signed_in
+    for task in Task.query.filter_by(project_id=project.id).all():
+        task.baseline_start = task.baseline_finish = task.baseline_duration = None
+        task.actual_start = task.actual_finish = None
+    db.session.commit()
+
     body = client.get(f"/api/schedule/projects/{project.id}/health").get_json()
     by_number = {c["number"]: c for c in body["checks"]}
 
+    assert body["has_baseline"] is False
     for number in (9, 11, 14):
         assert by_number[number]["status"] == "skipped"
+        assert "Skipped" in by_number[number]["detail"]
 
 
 def test_critical_path_endpoint_returns_only_critical_activities(signed_in):
@@ -234,3 +245,184 @@ def test_api_paths_get_json_regardless_of_accept_header(client):
 
     assert response.status_code == 404
     assert response.headers["Content-Type"].startswith("application/json")
+
+
+# ── baselines and progress ────────────────────────────────────────────────
+
+
+def test_all_fourteen_checks_run_once_a_baseline_and_actuals_exist(signed_in):
+    """The demo project now carries both, so nothing should report skipped."""
+    client, project, _ = signed_in
+    body = client.get(f"/api/schedule/projects/{project.id}/health").get_json()
+
+    assert body["has_baseline"] is True
+    assert [c for c in body["checks"] if c["status"] == "skipped"] == []
+
+
+def test_baseline_execution_index_reflects_the_seeded_slip(signed_in):
+    client, project, _ = signed_in
+    body = client.get(f"/api/schedule/projects/{project.id}/progress").get_json()
+
+    assert body["success"] is True
+    assert body["has_baseline"] is True
+    assert body["has_actuals"] is True
+    # Four of seven activities due by the data date are actually complete.
+    assert 0 < body["baseline_execution_index"] < 1
+    assert body["activities_behind"] > 0
+
+
+def test_progress_names_the_activities_that_slipped(signed_in):
+    client, project, _ = signed_in
+    body = client.get(f"/api/schedule/projects/{project.id}/progress").get_json()
+
+    names = {a["name"] for a in body["behind_activities"]}
+    assert "Demolition & strip-out" in names
+
+
+def test_setting_a_baseline_supersedes_the_previous_one(signed_in, app_context):
+    from models import ScheduleBaseline
+
+    client, project, _ = signed_in
+    response = client.post(
+        f"/api/schedule/projects/{project.id}/baseline",
+        json={"name": "Rev B", "notes": "after the demolition slip"},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["baseline"]["task_count"] == 25
+
+    current = ScheduleBaseline.query.filter_by(project_id=project.id, is_current=True).all()
+    assert len(current) == 1
+    assert current[0].name == "Rev B"
+    # The superseded baseline is kept, not deleted.
+    assert ScheduleBaseline.query.filter_by(project_id=project.id).count() == 2
+
+
+def test_baseline_requires_a_json_body(signed_in):
+    """The JSON requirement is half of what stands in for CSRF here."""
+    client, project, _ = signed_in
+    response = client.post(
+        f"/api/schedule/projects/{project.id}/baseline",
+        data="name=Rev+B",
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    assert response.status_code == 415
+
+
+def test_baseline_requires_a_name(signed_in):
+    client, project, _ = signed_in
+    response = client.post(f"/api/schedule/projects/{project.id}/baseline", json={})
+
+    assert response.status_code == 400
+
+
+def test_baseline_is_refused_for_another_tenants_project(signed_in, app_context):
+    from datetime import date
+
+    from extensions import db
+    from models import Company, Project
+
+    client, _, _ = signed_in
+    rival = Company(name="Rival Co")
+    db.session.add(rival)
+    db.session.flush()
+    rival_project = Project(
+        name="Rival", company_id=rival.id, start_date=date(2026, 1, 5), end_date=date(2026, 6, 5)
+    )
+    db.session.add(rival_project)
+    db.session.commit()
+
+    response = client.post(
+        f"/api/schedule/projects/{rival_project.id}/baseline", json={"name": "Nope"}
+    )
+    assert response.status_code == 404
+
+
+def test_task_baseline_variance_properties(seeded):
+    from models import Task
+
+    task = Task.query.filter_by(project_id=seeded.id, wbs_code="A110").one()
+
+    assert task.is_complete is True
+    # Demolition was seeded four working days late.
+    assert task.finish_variance_days > 0
+    assert task.baseline_finish is not None
+
+
+# ── Monte Carlo risk ──────────────────────────────────────────────────────
+
+
+def test_risk_endpoint_returns_dated_percentiles(signed_in):
+    client, project, _ = signed_in
+    response = client.get(f"/api/schedule/projects/{project.id}/risk?iterations=400")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert set(body["percentiles"]) == {"p10", "p50", "p80", "p90"}
+    assert set(body["dates"]) == {"deterministic", "p10", "p50", "p80", "p90"}
+    assert body["dates"]["p80"] > body["dates"]["p50"]
+
+
+def test_risk_shows_the_deterministic_date_is_optimistic(signed_in):
+    """The headline finding a single-number schedule hides."""
+    client, project, _ = signed_in
+    body = client.get(f"/api/schedule/projects/{project.id}/risk?iterations=600").get_json()
+
+    assert body["percentiles"]["p80"] > body["deterministic_duration_days"]
+    assert body["confidence_in_deterministic"] < 0.5
+
+
+def test_risk_reports_criticality_per_activity(signed_in):
+    client, project, _ = signed_in
+    body = client.get(f"/api/schedule/projects/{project.id}/risk?iterations=400").get_json()
+
+    assert len(body["activities"]) == 25
+    top = body["activities"][0]
+    assert top["criticality_index"] == 1.0
+    assert "duration_sensitivity" in top
+
+
+def test_risk_rejects_an_unknown_distribution(signed_in):
+    client, project, _ = signed_in
+    response = client.get(f"/api/schedule/projects/{project.id}/risk?distribution=gaussian")
+
+    assert response.status_code == 400
+    assert "distribution must be one of" in response.get_json()["error"]
+
+
+def test_risk_rejects_non_numeric_iterations(signed_in):
+    client, project, _ = signed_in
+    response = client.get(f"/api/schedule/projects/{project.id}/risk?iterations=lots")
+
+    assert response.status_code == 400
+
+
+def test_risk_iterations_are_capped(signed_in):
+    """An unbounded iteration count is a denial-of-service vector."""
+    from services.schedule_risk import MAX_ITERATIONS
+
+    client, project, _ = signed_in
+    body = client.get(f"/api/schedule/projects/{project.id}/risk?iterations=99999999").get_json()
+
+    assert body["iterations"] == MAX_ITERATIONS
+
+
+def test_risk_is_refused_for_another_tenants_project(signed_in, app_context):
+    from datetime import date
+
+    from extensions import db
+    from models import Company, Project
+
+    client, _, _ = signed_in
+    rival = Company(name="Rival Risk Co")
+    db.session.add(rival)
+    db.session.flush()
+    rival_project = Project(
+        name="Rival", company_id=rival.id, start_date=date(2026, 1, 5), end_date=date(2026, 6, 5)
+    )
+    db.session.add(rival_project)
+    db.session.commit()
+
+    assert client.get(f"/api/schedule/projects/{rival_project.id}/risk").status_code == 404

@@ -626,6 +626,10 @@ class Project(db.Model):
     location = Column(String(200))
     status = Column(String(20), default="active")
     schedule_type = Column(db.Enum(ScheduleType), default=ScheduleType.GANTT)
+    # The "as of" date that progress is reported against. Every schedule metric
+    # is measured relative to this: an activity is late only with respect to a
+    # data date. Defaults to the project start until the first update.
+    data_date = Column(Date)
     azure_project_id = Column(String(100))
     fabric_dataset_id = Column(String(100))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -644,6 +648,18 @@ class Project(db.Model):
     transactions = relationship("Transaction", back_populates="project")
     budgets = relationship("ProjectBudget", back_populates="project", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="project")
+    baselines = relationship(
+        "ScheduleBaseline", back_populates="project", cascade="all, delete-orphan"
+    )
+
+    @property
+    def current_baseline(self):
+        return next((b for b in self.baselines if b.is_current), None)
+
+    @property
+    def effective_data_date(self):
+        """The reporting date, falling back to the project start."""
+        return self.data_date or self.start_date
 
     __table_args__ = (
         db.Index("ix_projects_company", "company_id"),
@@ -661,12 +677,25 @@ class Task(db.Model):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     parent_task_id = Column(Integer, ForeignKey("tasks.id"))
     wbs_code = Column(String(50))
+    # Current plan. These are an output of the CPM calculation.
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     duration = Column(Integer, nullable=False)  # in days
     progress = Column(Float, default=0.0)  # percentage
     status = Column(db.Enum(TaskStatus), default=TaskStatus.NOT_STARTED)
     priority = Column(String(10), default="medium")
+
+    # The approved baseline these dates are measured against, copied from the
+    # current ScheduleBaseline. Without a baseline there is nothing to be late
+    # relative to, so DCMA checks 11 and 14 cannot be evaluated at all.
+    baseline_start = Column(Date)
+    baseline_finish = Column(Date)
+    baseline_duration = Column(Integer)
+
+    # What actually happened. actual_finish being set is what makes an activity
+    # complete; the status enum is a label, these are the record.
+    actual_start = Column(Date)
+    actual_finish = Column(Date)
     location = Column(String(200))  # for linear scheduling
     station_start = Column(Float)  # for linear scheduling
     station_end = Column(Float)  # for linear scheduling
@@ -707,8 +736,82 @@ class Task(db.Model):
         db.Index("ix_tasks_project", "project_id"),
         db.Index("ix_tasks_project_status", "project_id", "status"),
         db.Index("ix_tasks_project_start", "project_id", "start_date"),
+        db.Index("ix_tasks_project_actual_finish", "project_id", "actual_finish"),
         db.Index("ix_tasks_parent", "parent_task_id"),
     )
+
+    @property
+    def is_complete(self) -> bool:
+        """Complete means a recorded actual finish, not a status label."""
+        return self.actual_finish is not None
+
+    @property
+    def is_started(self) -> bool:
+        return self.actual_start is not None
+
+    @property
+    def start_variance_days(self):
+        """Calendar days late starting. Negative means early. None if unknown."""
+        if self.actual_start is None or self.baseline_start is None:
+            return None
+        return (self.actual_start - self.baseline_start).days
+
+    @property
+    def finish_variance_days(self):
+        """Calendar days late finishing. Negative means early. None if unknown."""
+        if self.actual_finish is None or self.baseline_finish is None:
+            return None
+        return (self.actual_finish - self.baseline_finish).days
+
+    @property
+    def plan_vs_baseline_days(self):
+        """Slip in the *forecast* against baseline, for work not yet finished.
+
+        This is the early-warning number: it moves before an activity is late,
+        because it compares where the plan now says it will finish.
+        """
+        if self.end_date is None or self.baseline_finish is None:
+            return None
+        return (self.end_date - self.baseline_finish).days
+
+
+class ScheduleBaseline(db.Model):
+    """A frozen snapshot of a project's dates, to measure progress against.
+
+    The current baseline is also denormalised onto ``Task.baseline_*`` so the
+    common case — "is this activity late?" — is a column read rather than a
+    join plus a JSON lookup. This table keeps the history, which is what makes
+    revision-to-revision comparison possible later.
+    """
+
+    __tablename__ = "schedule_baselines"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    name = Column(String(120), nullable=False)
+    notes = Column(Text)
+
+    # {task_id (as string): {"start": iso, "finish": iso, "duration": int}}
+    snapshot = Column(JSON, nullable=False)
+
+    # Exactly one baseline per project is current; setting a new one clears
+    # the flag on the others.
+    is_current = Column(Boolean, default=True, nullable=False)
+
+    set_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    set_by_id = Column(Integer, ForeignKey("users.id"))
+
+    project = relationship("Project", back_populates="baselines")
+    set_by = relationship("User", foreign_keys=[set_by_id])
+
+    __table_args__ = (
+        db.Index("ix_schedule_baselines_project", "project_id"),
+        db.Index("ix_schedule_baselines_current", "project_id", "is_current"),
+    )
+
+    @property
+    def task_count(self) -> int:
+        return len(self.snapshot or {})
 
 
 class TaskDependency(db.Model):
