@@ -150,7 +150,7 @@ the assessment has real defects to find — it grades **F (54.5%)** and names ea
 
 ### Verification
 
-271 tests. The CPM tests use networks whose answers can be checked by hand, which is the
+274 tests. The CPM tests use networks whose answers can be checked by hand, which is the
 only way to be confident about a scheduling engine. CI runs tests on Python 3.11/3.12/3.13,
 lints with ruff, and boots and seeds the application on every push.
 

@@ -5,7 +5,7 @@
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-271%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-274%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
 computes the critical path properly, then grades the schedule against the
@@ -207,7 +207,7 @@ services/
   optional.py              Lazy loading for every optional integration
 blueprints/                Flask routes, one per feature area
 models.py                  SQLAlchemy models, multi-tenant by company
-tests/                     271 tests, hand-checked scheduling networks
+tests/                     274 tests, hand-checked scheduling networks
 seed_demo.py               A realistic, deliberately imperfect demo project
 ```
 
@@ -243,7 +243,7 @@ pip install -e ".[dev]"            # pytest, ruff
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 271 tests
+pytest                    # 274 tests
 ruff check .              # lint
 ruff format .             # format
 ```

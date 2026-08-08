@@ -316,3 +316,57 @@ def test_a_ten_hour_calendar_survives_crossing_formats():
     assert from_xer.default_calendar.hours_per_day == 10.0
     assert crossed.default_calendar.hours_per_day == 10.0
     assert crossed.activity("T1").duration == from_xer.activity("T1").duration == 5.0
+
+
+def test_baseline_dates_are_read():
+    """This path was only reached by the integration round trip, and an
+    Element with no children is falsey — so `if baseline:` skipped a perfectly
+    present <Baseline> element. ElementTree deprecated that test for exactly
+    this ambiguity."""
+    with_baseline = SAMPLE_MSPDI.replace(
+        "      <Milestone>0</Milestone><Summary>0</Summary>\n"
+        "      <PredecessorLink>\n"
+        "        <PredecessorUID>1</PredecessorUID><Type>1</Type><LinkLag>0</LinkLag>\n"
+        "      </PredecessorLink>",
+        "      <Milestone>0</Milestone><Summary>0</Summary>\n"
+        "      <Baseline>\n"
+        "        <Number>0</Number>\n"
+        "        <Start>2026-09-10T08:00:00</Start>\n"
+        "        <Finish>2026-09-21T17:00:00</Finish>\n"
+        "      </Baseline>\n"
+        "      <PredecessorLink>\n"
+        "        <PredecessorUID>1</PredecessorUID><Type>1</Type><LinkLag>0</LinkLag>\n"
+        "      </PredecessorLink>",
+        1,
+    )
+    schedule = read_mspdi(with_baseline)
+    activity = schedule.activity("2")
+
+    assert activity.baseline_start == date(2026, 9, 10)
+    assert activity.baseline_finish == date(2026, 9, 21)
+
+
+def test_baseline_dates_survive_a_round_trip():
+    from core.exchange import ExchangeActivity, ExchangeSchedule
+
+    original = ExchangeSchedule(name="Baselined")
+    original.activities.append(
+        ExchangeActivity(
+            id="1",
+            name="Work",
+            duration=5,
+            baseline_start=date(2026, 9, 7),
+            baseline_finish=date(2026, 9, 11),
+        )
+    )
+    recovered = read_mspdi(write_mspdi(original)).activity("1")
+
+    assert recovered.baseline_start == date(2026, 9, 7)
+    assert recovered.baseline_finish == date(2026, 9, 11)
+
+
+def test_an_absent_baseline_leaves_the_dates_empty():
+    activity = read_mspdi(SAMPLE_MSPDI).activity("1")
+
+    assert activity.baseline_start is None
+    assert activity.baseline_finish is None

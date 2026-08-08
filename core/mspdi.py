@@ -294,6 +294,15 @@ def _read_tasks(root, schedule: ExchangeSchedule, hours_per_day: float) -> None:
         else:
             wbs_id = None
 
+        # An Element with no children is falsey, so `if baseline:` is False for
+        # a perfectly present <Baseline/> that happens to hold only text nodes.
+        # ElementTree deprecated the truthiness test for exactly this ambiguity.
+        baseline = _find(node, "Baseline")
+        baseline_start = _parse_datetime(_text(baseline, "Start")) if baseline is not None else None
+        baseline_finish = (
+            _parse_datetime(_text(baseline, "Finish")) if baseline is not None else None
+        )
+
         schedule.activities.append(
             ExchangeActivity(
                 id=uid,
@@ -313,12 +322,8 @@ def _read_tasks(root, schedule: ExchangeSchedule, hours_per_day: float) -> None:
                 or _parse_datetime(_text(node, "Finish")),
                 late_start=_parse_datetime(_text(node, "LateStart")),
                 late_finish=_parse_datetime(_text(node, "LateFinish")),
-                baseline_start=_parse_datetime(
-                    _text(_find(node, "Baseline"), "Start") if _find(node, "Baseline") else ""
-                ),
-                baseline_finish=_parse_datetime(
-                    _text(_find(node, "Baseline"), "Finish") if _find(node, "Baseline") else ""
-                ),
+                baseline_start=baseline_start,
+                baseline_finish=baseline_finish,
                 actual_start=_parse_datetime(_text(node, "ActualStart")),
                 actual_finish=_parse_datetime(_text(node, "ActualFinish")),
                 percent_complete=_float(_text(node, "PercentComplete"), 0.0) or 0.0,
