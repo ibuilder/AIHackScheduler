@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{% block title %}BBSchedule Platform - Balfour Beatty US{% endblock %}</title>
+    <title>{% block title %}BBSchedule{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -30,7 +30,7 @@
             <a class="navbar-brand" href="{{ url_for('main.index') }}">
                 <i class="fas fa-calendar-alt me-2"></i>
                 <strong>BBSchedule</strong>
-                <small class="ms-2 opacity-75">Balfour Beatty US</small>
+                <small class="ms-2 opacity-75">Construction scheduling</small>
             </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -170,7 +170,7 @@
             <div class="row">
                 <div class="col-md-6">
                     <h6 class="text-white">BBSchedule Platform</h6>
-                    <p class="mb-0">Professional construction scheduling for Balfour Beatty US</p>
+                    <p class="mb-0">A CPM engine you can check, and a schedule-quality score that says whether to trust it</p>
                 </div>
                 <div class="col-md-6 text-md-end">
                     <p class="mb-0">
@@ -179,7 +179,7 @@
                         </small>
                     </p>
                     <p class="mb-0">
-                        <small>&copy; 2025 Balfour Beatty US. All rights reserved.</small>
+                        <small>&copy; 2025-2026 Matthew M. Emma &middot; <a href="https://github.com/ibuilder/AIHackScheduler/blob/main/LICENSE" class="text-decoration-none">MIT licensed</a></small>
                     </p>
                 </div>
             </div>

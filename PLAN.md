@@ -226,15 +226,15 @@ not exist. `tests/test_templates.py` now asserts every rendered template resolve
    and geographic breakdown. Those payloads now carry a `simulated` flag so the UI can
    label them, but generated figures in an executive dashboard should be built or removed.
    Seven admin, Azure and project-template pages still render templates that do not exist.
-8. **Resolve the licensing contradiction.** The README claimed "proprietary software
-   developed for Balfour Beatty US. All rights reserved.", but the repository is public
-   with no `LICENSE` file. Under GitHub's terms a public repo without a license grants no
-   rights to anyone — so it is neither usefully open nor properly protected, and the
-   Balfour Beatty attribution on a personally owned repository is worth checking before it
-   is published further. **This needs an owner decision**, so no license file has been
-   added. Options: (a) add a real open-source license and drop the proprietary language,
-   (b) keep it proprietary and make the repository private, or (c) keep it public with an
-   explicit "all rights reserved, source-available for review" notice.
+8. **Licensing — resolved.** The repository is now [MIT licensed](LICENSE), copyright
+   Matthew M. Emma. It previously described itself as "proprietary software developed for
+   Balfour Beatty US. All rights reserved." while carrying no `LICENSE` file, so under
+   GitHub's terms it granted nobody any rights — neither usefully open nor properly
+   protected. The application's own footer asserted `© Balfour Beatty US. All rights
+   reserved.`, which an MIT grant directly contradicts, and the marketing copy claimed
+   Balfour Beatty teams were already using it. Those claims have been removed along with
+   the licence change: an open licence and an unevidenced affiliation with a named company
+   cannot both stand.
 
 ## 7. Positioning
 
