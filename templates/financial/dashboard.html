@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Financial Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h1 class="h3 mb-0">Financial</h1>
+                <p class="text-muted mb-0">Revenue, spend and receivables for the current year</p>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('financial.create_transaction') }}" class="btn btn-outline-primary">
+                    New transaction
+                </a>
+                <a href="{{ url_for('financial.create_invoice') }}" class="btn btn-primary">
+                    New invoice
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <p class="text-muted small text-uppercase mb-1">Revenue</p>
+                    <p class="h4 mb-0 font-monospace">{{ '{:,.2f}'.format(stats.total_revenue) }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <p class="text-muted small text-uppercase mb-1">Expenses</p>
+                    <p class="h4 mb-0 font-monospace">{{ '{:,.2f}'.format(stats.total_expenses) }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <p class="text-muted small text-uppercase mb-1">Outstanding</p>
+                    <p class="h4 mb-0 font-monospace">{{ '{:,.2f}'.format(stats.outstanding_invoices) }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <p class="text-muted small text-uppercase mb-1">Cash flow this month</p>
+                    <p class="h4 mb-0 font-monospace {% if stats.cash_flow < 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ '{:,.2f}'.format(stats.cash_flow) }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h6 mb-0">Recent transactions</h2>
+                    <a href="{{ url_for('financial.transaction_list') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Category</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for transaction in recent_transactions %}
+                                <tr>
+                                    <td>{{ transaction.transaction_date }}</td>
+                                    <td>{{ transaction.description|truncate(48) }}</td>
+                                    <td>
+                                        {% if transaction.expense_category %}
+                                            {{ transaction.expense_category.value|replace('_', ' ')|title }}
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <td class="text-end font-monospace {% if transaction.transaction_type.value == 'expense' %}text-danger{% endif %}">
+                                        {{ '{:,.2f}'.format(transaction.amount) }}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-muted text-center py-4">No transactions recorded.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h6 mb-0">Overdue invoices</h2>
+                    <a href="{{ url_for('financial.invoice_list') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Invoice</th>
+                                    <th>Client</th>
+                                    <th>Due</th>
+                                    <th class="text-end">Outstanding</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in overdue_invoices %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('financial.invoice_detail', invoice_id=invoice.id) }}"
+                                           class="font-monospace">{{ invoice.invoice_number }}</a>
+                                    </td>
+                                    <td>{{ invoice.client_name|truncate(24) }}</td>
+                                    <td>
+                                        {{ invoice.due_date }}
+                                        <span class="badge bg-danger ms-1">{{ invoice.days_overdue }}d</span>
+                                    </td>
+                                    <td class="text-end font-monospace">{{ '%.2f'|format(invoice.balance_due) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-muted text-center py-4">Nothing overdue.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

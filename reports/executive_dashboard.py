@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import current_user, login_required
 
-from models import Project, User
+from models import Equipment, Project, User
 
 executive_bp = Blueprint("executive", __name__)
 
@@ -74,21 +74,47 @@ class ExecutiveDashboard:
             },
             "resources": {
                 "total_staff": total_users,
-                "utilization_rate": 78.5,  # Simulated
-                "productivity_index": 92.3,  # Simulated
+                # Measured from logged equipment hours over the last 30 days.
+                # Previously a hardcoded 78.5 alongside a "productivity index"
+                # that was not derived from anything at all, so it has gone.
+                "equipment_utilization_rate": self._fleet_utilization(company_id),
             },
             "risk_indicators": {
                 "overdue_projects": overdue_projects,
-                "budget_risk_score": "Medium",
-                "schedule_risk_score": "Low",
-                "overall_health": "Good",
+                # Graded from the same overdue count the caller can see, rather
+                # than asserted as a constant "Medium" for every company.
+                "schedule_risk_score": self._grade_overdue(overdue_projects, total_projects),
+                "overall_health": self._grade_overdue(overdue_projects, total_projects),
             },
         }
 
+    @staticmethod
+    def _fleet_utilization(company_id) -> float:
+        """Mean 30-day utilisation across a company's active equipment."""
+        fleet = Equipment.query.filter_by(company_id=company_id, is_active=True).all()
+        if not fleet:
+            return 0.0
+        return round(sum(item.utilization_rate(30) for item in fleet) / len(fleet), 1)
+
+    @staticmethod
+    def _grade_overdue(overdue: int, total: int) -> str:
+        if total == 0:
+            return "unknown"
+        share = overdue / total
+        if share == 0:
+            return "low"
+        if share <= 0.15:
+            return "medium"
+        return "high"
+
     def get_financial_performance(self, company_id, months=12):
-        """Get financial performance trends"""
-        # This would integrate with actual financial systems
-        # For now, return simulated data
+        """Get financial performance trends.
+
+        WARNING: the monthly figures below are generated, not measured. Real
+        trends need transaction history the platform does not yet aggregate
+        by month. The payload is flagged ``simulated`` so callers can label it
+        rather than present invented revenue as fact.
+        """
 
         monthly_data = []
         base_revenue = 2500000  # Base monthly revenue
@@ -117,6 +143,10 @@ class ExecutiveDashboard:
         monthly_data.reverse()  # Show chronological order
 
         return {
+            "simulated": True,
+            "simulated_note": (
+                "Generated illustrative data. Not derived from recorded transactions."
+            ),
             "monthly_trends": monthly_data,
             "year_to_date": {
                 "revenue": sum(m["revenue"] for m in monthly_data[-12:]),
@@ -126,7 +156,12 @@ class ExecutiveDashboard:
         }
 
     def get_project_portfolio_analysis(self, company_id):
-        """Analyze project portfolio performance"""
+        """Analyze project portfolio performance.
+
+        Project counts by size band are real. Margins, completion rates,
+        durations and the geographic breakdown are illustrative constants and
+        are flagged as such in the payload.
+        """
         projects = Project.query.filter_by(company_id=company_id).all()
 
         # Categorize projects by size
@@ -174,6 +209,11 @@ class ExecutiveDashboard:
         ]
 
         return {
+            "partially_simulated": True,
+            "simulated_note": (
+                "Project counts and values are real. Margins, completion rates, "
+                "durations and the geographic split are illustrative constants."
+            ),
             "portfolio_summary": {
                 "total_projects": len(projects),
                 "total_value": sum(p.budget for p in projects if p.budget),

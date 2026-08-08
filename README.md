@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-183%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
 computes the critical path properly, then grades the schedule against the
@@ -34,25 +34,26 @@ dangling activity, a lead, excess lags, unresourced work — so the schedule ass
 real defects to report:
 
 ```
-Grade F | score 54.5 | optimisable True
+Grade F | score 50.0 | data date 2026-11-23 | baseline present
   PASS   1. Logic                        1 of 25 activities are dangling
   FAIL   2. Leads                        1 relationship uses a lead; leads hide true logic
   FAIL   3. Lags                         3 of 27 relationships carry a lag
   FAIL   4. Relationship Types           24 of 27 relationships are FS
   PASS   5. Hard Constraints             1 activity is pinned by a date constraint
-  FAIL   6. High Float                   7 activities have more than 44 days of float
+  FAIL   6. High Float                   7 activities carry more than 44 days of float
   PASS   7. Negative Float               0 activities cannot meet their required dates
   PASS   8. High Duration                1 activity runs longer than a reporting quarter
-  ----   9. Invalid Dates                Skipped: no actual finish dates supplied
+  PASS   9. Invalid Dates                0 activities record work completed after the data date
   FAIL  10. Resources                    5 of 24 working activities carry no cost or resource
-  ----  11. Missed Tasks                 Skipped: needs baseline and actual finish dates
-  PASS  12. Critical Path Test           A 600-day delay on 'A100' moved the finish by 600 days
+  FAIL  11. Missed Tasks                 2 of 4 completed activities slipped past baseline
+  PASS  12. Critical Path Test           A 600-day delay moved the finish by 600 days
   PASS  13. Critical Path Length Index   CPLI of 1.000 on a 271-day critical path
-  ----  14. Baseline Execution Index     Skipped: needs baseline and actual finish dates
+  FAIL  14. Baseline Execution Index     4 of 7 activities due by the data date are complete
 ```
 
-Checks that need data the schema does not hold report as **skipped**, not as passing. A
-score is only as honest as what it admits it could not measure.
+All fourteen run, because the demo carries a baseline and recorded actuals. On a project
+with neither, checks 9, 11 and 14 report as **skipped** rather than passing — a score is
+only as honest as what it admits it could not measure.
 
 ---
 
@@ -68,9 +69,16 @@ Pure Python, no Flask or SQLAlchemy imports, fully unit tested.
   walk that returns a connected chain rather than a bag of zero-float activities.
 - **Working calendars** — configurable working weekdays and holidays. Finish dates are the
   last day worked, which is how planners read them.
-- **DCMA 14-point assessment** — logic gaps, leads, lags, relationship-type mix, hard
-  constraints, high float, negative float, high duration, resource coverage, the
-  critical-path integrity probe, and CPLI.
+- **DCMA 14-point assessment** — all fourteen checks, including the ones needing a
+  baseline and recorded actuals.
+- **Progress measurement** — Baseline Execution Index, finish variance against baseline,
+  and forecast slippage. Its "behind" set is deliberately broader than DCMA check 11:
+  that check counts only completed-but-late activities, so work that was due and never
+  started is invisible to it — which is the more urgent problem.
+- **Monte Carlo risk** — three-point duration estimates sampled through the network
+  thousands of times, giving P10/P50/P80/P90 completion dates, the measured probability
+  of meeting the deterministic date, and a criticality index per activity. Seeded, so the
+  same schedule gives the same answer every run.
 
 ```python
 from core import Activity, Relationship, RelationType, calculate_cpm, assess_schedule
@@ -124,6 +132,10 @@ indistinguishable from a request for one that does not exist.
 | `GET /api/schedule/projects/<id>/cpm` | Every activity with early/late dates, total float, free float, criticality |
 | `GET /api/schedule/projects/<id>/health` | DCMA 14-point assessment, grade, and per-check offenders |
 | `GET /api/schedule/projects/<id>/critical-path` | The driving path only, for chart overlays |
+| `GET /api/schedule/projects/<id>/progress` | Baseline Execution Index, variance, worst slippage |
+| `GET /api/schedule/projects/<id>/risk` | Monte Carlo percentiles and criticality index |
+| `POST /api/schedule/projects/<id>/baseline` | Freeze the current plan as the baseline |
+| `GET /api/financial/aged-receivables` | Outstanding balances bucketed by days overdue |
 
 ```bash
 curl -b cookies.txt http://localhost:5000/api/schedule/projects/1/health | jq '.grade, .score'
@@ -138,14 +150,18 @@ core/                    Pure scheduling algorithms — no Flask, no database
   cpm.py                   Forward/backward passes, float, cycle detection
   calendar.py              Working-day ↔ calendar-date mapping
   schedule_health.py       DCMA 14-point assessment
+  progress.py              Baseline Execution Index and variance
+  risk.py                  Monte Carlo simulation over the network
 services/
   schedule_analysis.py     Bridge between the ORM and core/
+  schedule_risk.py         Simulation against a stored project
   schedule_optimizer.py    Optimisation, gated on schedule quality
+  billing.py               Payment recording and invoice balances
   azure_ai.py              LLM interpretation, grounded in computed CPM
   optional.py              Lazy loading for every optional integration
 blueprints/                Flask routes, one per feature area
 models.py                  SQLAlchemy models, multi-tenant by company
-tests/                     73 tests, hand-checked scheduling networks
+tests/                     183 tests, hand-checked scheduling networks
 seed_demo.py               A realistic, deliberately imperfect demo project
 ```
 
@@ -180,7 +196,7 @@ pip install -e ".[dev]"            # pytest, ruff
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 73 tests
+pytest                    # 183 tests
 ruff check .              # lint
 ruff format .             # format
 ```
@@ -195,24 +211,35 @@ every push.
 This is working software with a solid core and an unfinished perimeter. Being specific
 about which is which:
 
-**Solid** — CPM engine, schedule quality assessment, working calendars, multi-tenant
-isolation, the schedule analysis API.
+**Solid** — CPM engine, all fourteen DCMA checks, working calendars, baseline and
+progress measurement, Monte Carlo risk, multi-tenant isolation, the schedule analysis API,
+payment recording and invoice balances, equipment utilisation from logged hours.
 
 **Working, thin** — project and task management, Gantt/linear/pull-planning views, auth
-and roles.
+and roles, transaction ledger.
 
-**Facade** — equipment maintenance and utilisation return placeholder values; payment
-processing is unimplemented; `azure_ai/predictive_analytics.py` returns hardcoded numbers.
-These are marked for completion or removal.
+**Still a facade** — `reports/executive_dashboard.py` generates its revenue trends and
+geographic breakdown rather than measuring them. Those payloads now carry a `simulated`
+flag so the UI can label them, but they should be built or removed.
+
+**Not attempted** — card processing. Payments are recorded, not taken: no key management,
+no webhook reconciliation, no PCI scope. The README previously advertised "Stripe
+integration in progress" against no implementation of any kind.
+
+**Known gaps, tested as gaps** — seven admin, Azure and project-template pages render
+templates that were never written, so those routes return 500. `tests/test_templates.py`
+holds the list and fails if it grows.
 
 The near-term priorities, in order:
 
-1. **Baseline and actual dates** on `Task` — unlocks DCMA checks 9, 11 and 14, plus
-   Baseline Execution Index and schedule variance. Highest-value change remaining.
-2. **Schedule quality in the UI** — grade badges, drill-down, trend across submissions.
-3. **P6 `.xer` and MS Project import** — nothing serious enters through a web form.
-4. **Monte Carlo risk analysis** — P50/P80 completion dates and a criticality index, over
-   the engine that already exists.
+1. **Schedule quality in the UI** — grade badges, drill-down to offending activities, and
+   a trend across baseline revisions. The data is all computed; nothing surfaces it yet.
+2. **P6 `.xer` and MS Project import** — nothing serious enters a scheduling tool through
+   a web form.
+3. **Resource-levelled scheduling** — the optimiser still emits generic advice where it
+   could run a real serial-schedule-generation pass over existing assignments.
+4. **Schedule comparison between baselines** — the snapshots are stored; diffing them is
+   where delay analysis starts.
 
 [`PLAN.md`](PLAN.md) has the full assessment: what was wrong, what the market looks like in
 2026, and why schedule quality is the position worth taking.

@@ -730,7 +730,7 @@ report.grade, report.is_optimisable</pre>
       <div class="status solid">
         <h3>Solid</h3>
         <ul>
-          <li>CPM engine, 73 tests on hand-checked networks</li>
+          <li>CPM engine, 183 tests on hand-checked networks</li>
           <li>DCMA 14-point assessment</li>
           <li>Working calendars</li>
           <li>Multi-tenant isolation</li>
@@ -889,7 +889,7 @@ function calculateCpm(activities, rels) {
 
 const HIGH_FLOAT_DAYS = 44, HIGH_DURATION_DAYS = 44;
 
-function assessSchedule(activities, rels, result, resourcedIds) {
+function assessSchedule(activities, rels, result, resourcedIds, progress) {
   const n = activities.length, nRel = rels.length;
   const ids = activities.map(a => a.id);
   const checks = [];
@@ -957,8 +957,16 @@ function assessSchedule(activities, rels, result, resourcedIds) {
       `${longTasks.length} activit${longTasks.length === 1 ? "y runs" : "ies run"} longer than a reporting quarter`,
       longTasks);
 
-  add(9, "Invalid Dates", null, null, "0% actuals in the future",
-      "Skipped: the schema records no actual finish dates");
+  if (!progress) {
+    add(9, "Invalid Dates", null, null, "0% actuals in the future",
+        "Skipped: no actual finish dates recorded");
+  } else {
+    const future = Object.entries(progress.actualFinish)
+      .filter(([, offset]) => offset > progress.dataDate).map(([id]) => id);
+    add(9, "Invalid Dates", future.length === 0,
+        +(pct(future.length, n) * 100).toFixed(1), "0% actuals in the future",
+        `${future.length} activities record work completed after the data date`, future);
+  }
 
   const resourced = new Set(resourcedIds);
   const working = activities.filter(a => a.duration > 0);
@@ -969,8 +977,20 @@ function assessSchedule(activities, rels, result, resourcedIds) {
       `${unresourced.length} of ${working.length} working activities carry no cost or resource`,
       unresourced);
 
-  add(11, "Missed Tasks", null, null, "≤ 5% finished late against baseline",
-      "Skipped: needs both baseline and actual finish dates");
+  if (!progress) {
+    add(11, "Missed Tasks", null, null, "≤ 5% finished late against baseline",
+        "Skipped: needs both baseline and actual finish dates");
+  } else {
+    const completed = Object.keys(progress.actualFinish);
+    const missed = completed.filter(
+      id => progress.baselineFinish[id] !== undefined
+         && progress.actualFinish[id] > progress.baselineFinish[id]);
+    const value = pct(missed.length, completed.length);
+    add(11, "Missed Tasks", value <= 0.05, +(value * 100).toFixed(1),
+        "≤ 5% finished late against baseline",
+        `${missed.length} of ${completed.length} completed activities slipped past baseline`,
+        missed);
+  }
 
   if (result.criticalPath.length) {
     const probeId = result.criticalPath[0];
@@ -998,8 +1018,18 @@ function assessSchedule(activities, rels, result, resourcedIds) {
     add(13, "Critical Path Length Index", null, null, "≥ 0.95", "Skipped: zero-length critical path");
   }
 
-  add(14, "Baseline Execution Index", null, null, "≥ 0.95",
-      "Skipped: needs both baseline and actual finish dates");
+  if (!progress) {
+    add(14, "Baseline Execution Index", null, null, "≥ 0.95",
+        "Skipped: needs both baseline and actual finish dates");
+  } else {
+    const due = Object.entries(progress.baselineFinish)
+      .filter(([, offset]) => offset <= progress.dataDate).map(([id]) => id);
+    const done = due.filter(id => progress.actualFinish[id] !== undefined);
+    const bei = due.length ? done.length / due.length : 1;
+    add(14, "Baseline Execution Index", bei >= 0.95, +bei.toFixed(3), "≥ 0.95",
+        `${done.length} of ${due.length} activities due by the data date are complete`,
+        due.filter(id => progress.actualFinish[id] === undefined));
+  }
 
   const runnable = checks.filter(c => c.passed !== null);
   const score = runnable.length ? 100 * runnable.filter(c => c.passed).length / runnable.length : 0;
@@ -1054,6 +1084,11 @@ const BASE_RELS = [
   ["A610","A620",FS,0], ["A620","A700",FS,0], ["A700","A710",FS,0],
 ].map(([p, s, t, lag]) => ({ p, s, t, lag }));
 
+// Mirrors seed_demo.py: where the project is reporting from, and what
+// actually happened, as working-day slip against the baseline finish.
+const DATA_DATE_OFFSET = 55;
+const ACTUAL_FINISH_SLIP = { A100: 0, A120: 0, A110: 4, A200: 2 };
+
 const RESOURCED = ["A100","A110","A200","A210","A220","A230","A240","A300","A310","A320",
   "A400","A410","A420","A500","A510","A520","A530","A600","A700"];
 
@@ -1077,6 +1112,12 @@ const REPAIRS = [
     fixes: "clears the offender on check 1",
   },
   {
+    key: "progress",
+    label: "Record progress against a baseline",
+    note: "Four of the fourteen checks need an approved baseline and recorded actuals. Without them they report as skipped, not as passing — a score is only as honest as what it admits it could not measure.",
+    fixes: "runs checks 9, 11 and 14",
+  },
+  {
     key: "resource",
     label: "Resource every working activity",
     note: "Five activities carried no cost or resource, so they contribute nothing to the cost-loaded forecast.",
@@ -1093,7 +1134,25 @@ function buildNetwork(active) {
   if (active.has("orphan"))  rels = rels.concat([{ p: "A530", s: "A900", t: FS, lag: 0 },
                                                  { p: "A900", s: "A700", t: FS, lag: 0 }]);
   const resourced = active.has("resource") ? activities.map(a => a.id) : RESOURCED;
-  return { activities, rels, resourced };
+
+  // The baseline is the plan as first approved, so it is computed from the
+  // pristine network rather than whatever the repairs have made of it.
+  let progress = null;
+  if (active.has("progress")) {
+    const baselineResult = calculateCpm(BASE_ACTIVITIES, BASE_RELS);
+    const baselineFinish = {}, actualFinish = {};
+    for (const activity of BASE_ACTIVITIES) {
+      // Last day worked, matching the finish-date convention in core.calendar.
+      const finish = baselineResult.activities.get(activity.id).earlyFinish - 1;
+      baselineFinish[activity.id] = finish;
+      if (ACTUAL_FINISH_SLIP[activity.id] !== undefined) {
+        actualFinish[activity.id] = finish + ACTUAL_FINISH_SLIP[activity.id];
+      }
+    }
+    progress = { baselineFinish, actualFinish, dataDate: DATA_DATE_OFFSET };
+  }
+
+  return { activities, rels, resourced, progress };
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1122,9 +1181,9 @@ function renderRepairs() {
 }
 
 function render() {
-  const { activities, rels, resourced } = buildNetwork(active);
+  const { activities, rels, resourced, progress } = buildNetwork(active);
   const result = calculateCpm(activities, rels);
-  const report = assessSchedule(activities, rels, result, resourced);
+  const report = assessSchedule(activities, rels, result, resourced, progress);
 
   const criticalCount = [...result.activities.values()].filter(a => a.isCritical).length;
   el("fig-duration").innerHTML = `${result.duration}<small> wd</small>`;
@@ -1175,8 +1234,17 @@ function render() {
   const failed = failedChecks.length;
   const onlyHighFloat = failed === 1 && failedChecks[0].number === 6;
 
+  const failedNumbers = new Set(failedChecks.map(c => c.number));
+  const performanceOnly = failed > 0 && [...failedNumbers].every(n => [6, 11, 14].includes(n))
+    && (failedNumbers.has(11) || failedNumbers.has(14));
+
   let verdict;
-  if (failed === 0) {
+  if (performanceOnly) {
+    verdict = `<strong>The logic is sound; the project is behind.</strong> Every structural
+      check passes, but the baseline checks do not: work due by the data date has not been
+      delivered. A schedule can be perfectly built and still describe a job that is late —
+      which is exactly why quality and performance are scored separately.`;
+  } else if (failed === 0) {
     verdict = `<strong>Every runnable check passes.</strong> Float is meaningful across the
       network, so an optimiser has something real to work against.`;
   } else if (onlyHighFloat) {

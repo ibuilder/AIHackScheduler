@@ -18,8 +18,10 @@ from core.cpm import (
     calculate_cpm,
     longest_path,
 )
+from core.progress import ActivityProgress, build_report
 from core.schedule_health import assess_schedule
-from models import Project, ResourceAssignment, Task, TaskDependency
+from extensions import db
+from models import Project, ResourceAssignment, ScheduleBaseline, Task, TaskDependency
 
 
 def load_network(project_id: int) -> tuple[list[Activity], list[Relationship], WorkCalendar]:
@@ -158,21 +160,140 @@ def health_check(project_id: int) -> dict[str, Any]:
         ).all()
     }
 
-    # Checks 9, 11 and 14 need recorded actual and baseline finish dates. The
-    # Task model has neither — only a status enum — so those checks report as
-    # skipped. Deriving "actuals" from the CPM forward pass would make them
-    # look assessed while measuring nothing but the plan against itself.
+    # Checks 9, 11 and 14 need recorded baseline and actual finish dates. Where
+    # a project has them, they are supplied and the checks run; where it does
+    # not, they are omitted and the checks report as skipped. Deriving
+    # "actuals" from the CPM forward pass would make them look assessed while
+    # measuring nothing but the plan against itself.
+    project = Project.query.get(project_id)
+    calendar = WorkCalendar(project.start_date)
+    tasks = Task.query.filter(Task.id.in_(task_ids)).all()
+
+    baseline_finish = {
+        str(task.id): calendar.work_days_between(project.start_date, task.baseline_finish) - 1
+        for task in tasks
+        if task.baseline_finish and task.baseline_finish >= project.start_date
+    }
+    actual_finish = {
+        str(task.id): calendar.work_days_between(project.start_date, task.actual_finish) - 1
+        for task in tasks
+        if task.actual_finish and task.actual_finish >= project.start_date
+    }
+    data_date_offset = max(
+        0, calendar.work_days_between(project.start_date, project.effective_data_date) - 1
+    )
+
     report = assess_schedule(
         activities,
         relationships,
         result=result,
         resourced_activity_ids=sorted(resourced),
+        baseline_finish=baseline_finish or None,
+        actual_finish=actual_finish or None,
+        data_date_offset=data_date_offset,
     )
 
     payload = report.to_dict()
     payload["success"] = True
     payload["project_id"] = project_id
+    payload["data_date"] = project.effective_data_date.isoformat()
+    payload["has_baseline"] = bool(baseline_finish)
     return payload
+
+
+def progress_report(project_id: int) -> dict[str, Any]:
+    """Measure the project against its baseline: BEI, variance, slippage."""
+    project = Project.query.get(project_id)
+    if project is None:
+        return {"success": False, "error": f"Project {project_id} not found"}
+
+    tasks = Task.query.filter_by(project_id=project_id).order_by(Task.start_date, Task.id).all()
+    if not tasks:
+        return {"success": False, "error": "Project has no tasks to report on"}
+
+    calendar = WorkCalendar(project.start_date)
+
+    def offset(value):
+        if value is None or value < project.start_date:
+            return None
+        return calendar.work_days_between(project.start_date, value) - 1
+
+    activities = [
+        ActivityProgress(
+            id=str(task.id),
+            name=task.name,
+            baseline_finish=offset(task.baseline_finish),
+            actual_start=offset(task.actual_start),
+            actual_finish=offset(task.actual_finish),
+            forecast_finish=offset(task.end_date),
+        )
+        for task in tasks
+    ]
+
+    data_date_offset = max(
+        0, calendar.work_days_between(project.start_date, project.effective_data_date) - 1
+    )
+    report = build_report(activities, data_date_offset)
+
+    payload = report.to_dict()
+    payload["success"] = True
+    payload["project_id"] = project_id
+    payload["data_date"] = project.effective_data_date.isoformat()
+    baseline = project.current_baseline
+    payload["baseline"] = (
+        None
+        if baseline is None
+        else {
+            "id": baseline.id,
+            "name": baseline.name,
+            "set_at": baseline.set_at.isoformat() if baseline.set_at else None,
+            "task_count": baseline.task_count,
+        }
+    )
+    return payload
+
+
+def set_baseline(project_id: int, name: str, user_id: int | None = None, notes: str = ""):
+    """Freeze the current plan as the baseline everything is measured against."""
+    project = Project.query.get(project_id)
+    if project is None:
+        raise LookupError(f"Project {project_id} not found")
+
+    tasks = Task.query.filter_by(project_id=project_id).all()
+    if not tasks:
+        raise ValueError("Cannot baseline a project with no tasks")
+
+    snapshot = {
+        str(task.id): {
+            "start": task.start_date.isoformat(),
+            "finish": task.end_date.isoformat(),
+            "duration": task.duration,
+        }
+        for task in tasks
+    }
+
+    # Only one baseline is current at a time; the rest are history.
+    for existing in project.baselines:
+        existing.is_current = False
+
+    baseline = ScheduleBaseline(
+        project_id=project.id,
+        name=name,
+        notes=notes,
+        snapshot=snapshot,
+        is_current=True,
+        set_by_id=user_id,
+    )
+    db.session.add(baseline)
+
+    # Denormalise onto the tasks so "is this late?" stays a column read.
+    for task in tasks:
+        task.baseline_start = task.start_date
+        task.baseline_finish = task.end_date
+        task.baseline_duration = task.duration
+
+    db.session.commit()
+    return baseline
 
 
 def critical_path_tasks(project_id: int) -> list[Task]:

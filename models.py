@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask_login import UserMixin
 from sqlalchemy import (
@@ -187,6 +187,12 @@ class Equipment(db.Model):
     assigned_to_user = relationship("User", back_populates="assigned_equipment")
     supplier = relationship("Supplier", back_populates="equipment")
     transactions = relationship("Transaction", back_populates="equipment")
+    usage_logs = relationship(
+        "EquipmentUsageLog", back_populates="equipment", cascade="all, delete-orphan"
+    )
+    maintenance_records = relationship(
+        "MaintenanceRecord", back_populates="equipment", cascade="all, delete-orphan"
+    )
 
     # Unique constraint per company
     __table_args__ = (
@@ -198,17 +204,55 @@ class Equipment(db.Model):
         db.Index("ix_equipment_maintenance_due", "company_id", "next_maintenance_date"),
     )
 
+    def utilization_rate(self, days: int = 30, as_of: date | None = None) -> float:
+        """Percentage of available working hours this equipment was in use.
+
+        Computed from recorded usage rather than returned as a constant. An
+        eight-hour working day is assumed over the window; a machine logging
+        four hours a day for a month reads as 50% utilised.
+
+        Returns 0.0 when nothing has been logged, which is honest: no usage
+        records means no measured utilisation, not average utilisation.
+        """
+        if days < 1:
+            raise ValueError(f"Utilisation window must be at least one day, got {days}")
+
+        # The window is `days` calendar days inclusive of both ends, so the
+        # hours numerator and the working-day denominator cover exactly the
+        # same span. Deriving window_start from `days` rather than `days - 1`
+        # made the numerator one day wider than the denominator, which read
+        # back as 52.4% for a machine working half days.
+        window_end = as_of or date.today()
+        window_start = window_end - timedelta(days=days - 1)
+
+        hours = sum(
+            log.hours_used or 0
+            for log in self.usage_logs
+            if log.usage_date and window_start <= log.usage_date <= window_end
+        )
+
+        # Working days in the window, five per week.
+        working_days = sum(
+            1 for offset in range(days) if (window_start + timedelta(days=offset)).weekday() < 5
+        )
+        available_hours = working_days * 8
+        if available_hours <= 0:
+            return 0.0
+        return round(min(100.0, hours / available_hours * 100), 1)
+
     @property
-    def utilization_rate(self):
-        """Calculate equipment utilization rate over last 30 days"""
-        return 75.5  # Placeholder - would calculate from usage logs
+    def utilization_rate_30d(self) -> float:
+        """Convenience for templates, which cannot pass arguments."""
+        return self.utilization_rate()
+
+    @property
+    def total_hours_logged(self) -> float:
+        return sum(log.hours_used or 0 for log in self.usage_logs)
 
     @property
     def days_until_maintenance(self):
         """Calculate days until next scheduled maintenance"""
         if self.next_maintenance_date:
-            from datetime import date
-
             delta = self.next_maintenance_date - date.today()
             return delta.days
         return None
@@ -217,10 +261,108 @@ class Equipment(db.Model):
     def is_maintenance_due(self):
         """Check if maintenance is due"""
         if self.next_maintenance_date:
-            from datetime import date
-
             return self.next_maintenance_date <= date.today()
         return False
+
+
+class EquipmentUsageLog(db.Model):
+    """Hours a machine actually worked on a given day.
+
+    Utilisation is measured from these rows. Before they existed
+    ``Equipment.utilization_rate`` returned a hardcoded 75.5, so every
+    utilisation figure on every dashboard was the same invented number.
+    """
+
+    __tablename__ = "equipment_usage_logs"
+
+    id = Column(Integer, primary_key=True)
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
+    usage_date = Column(Date, nullable=False)
+    hours_used = Column(Float, nullable=False, default=0.0)
+
+    # Where the hours went, so utilisation can be attributed.
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    task_id = Column(Integer, ForeignKey("tasks.id"))
+    operator_id = Column(Integer, ForeignKey("users.id"))
+
+    fuel_used = Column(Float)
+    location = Column(String(200))
+    notes = Column(Text)
+
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    recorded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    equipment = relationship("Equipment", back_populates="usage_logs")
+    project = relationship("Project")
+    task = relationship("Task")
+    operator = relationship("User", foreign_keys=[operator_id])
+
+    __table_args__ = (
+        # One entry per machine per day; two rows for the same day would
+        # double-count hours and inflate utilisation.
+        db.UniqueConstraint("equipment_id", "usage_date", name="uq_equipment_usage_per_day"),
+        db.Index("ix_equipment_usage_equipment_date", "equipment_id", "usage_date"),
+        db.Index("ix_equipment_usage_company_date", "company_id", "usage_date"),
+        db.Index("ix_equipment_usage_project", "project_id"),
+    )
+
+
+class MaintenanceRecord(db.Model):
+    """A scheduled or completed maintenance job against one machine."""
+
+    __tablename__ = "maintenance_records"
+
+    id = Column(Integer, primary_key=True)
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
+
+    maintenance_type = Column(db.Enum(MaintenanceType), nullable=False)
+    status = Column(db.Enum(MaintenanceStatus), nullable=False, default=MaintenanceStatus.SCHEDULED)
+
+    scheduled_date = Column(Date, nullable=False)
+    completed_date = Column(Date)
+
+    description = Column(Text, nullable=False)
+    work_performed = Column(Text)
+
+    # Cost and downtime, which is what makes maintenance analysable.
+    labour_cost = Column(db.Numeric(12, 2), default=0)
+    parts_cost = Column(db.Numeric(12, 2), default=0)
+    downtime_hours = Column(Float, default=0.0)
+
+    # Reading at the time of service, for interval-based scheduling.
+    operating_hours_at_service = Column(Float)
+
+    technician_id = Column(Integer, ForeignKey("users.id"))
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
+
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    equipment = relationship("Equipment", back_populates="maintenance_records")
+    technician = relationship("User", foreign_keys=[technician_id])
+    supplier = relationship("Supplier")
+
+    __table_args__ = (
+        db.Index("ix_maintenance_equipment", "equipment_id"),
+        db.Index("ix_maintenance_company_status", "company_id", "status"),
+        db.Index("ix_maintenance_scheduled", "company_id", "scheduled_date"),
+    )
+
+    @property
+    def total_cost(self):
+        return (self.labour_cost or 0) + (self.parts_cost or 0)
+
+    @property
+    def is_overdue(self) -> bool:
+        """Scheduled, past its date, and not yet done."""
+        if self.status in (MaintenanceStatus.COMPLETED, MaintenanceStatus.CANCELLED):
+            return False
+        return bool(self.scheduled_date and self.scheduled_date < date.today())
 
 
 class Supplier(db.Model):
@@ -524,6 +666,58 @@ class Invoice(db.Model):
         db.Index("ix_invoices_due_date", "due_date"),
     )
 
+    # ── Balance and status ────────────────────────────────────────────────
+    # paid_amount is a stored column so that outstanding-balance queries stay
+    # a single scan, but it is only ever written by recalculate_payments(),
+    # which derives it from the payment rows. Nothing else should set it.
+
+    @property
+    def settled_payments(self):
+        """Payments that actually cleared. Pending and failed do not count."""
+        return [p for p in self.payments if p.status == PaymentStatus.COMPLETED]
+
+    @property
+    def amount_paid(self):
+        return sum((p.amount or 0) for p in self.settled_payments)
+
+    @property
+    def balance_due(self):
+        return (self.total_amount or 0) - self.amount_paid
+
+    @property
+    def is_settled(self) -> bool:
+        return self.balance_due <= 0
+
+    @property
+    def days_overdue(self) -> int:
+        """Days past the due date, or 0 if settled, unsent, or not yet due."""
+        if self.status in (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED):
+            return 0
+        if self.is_settled or not self.due_date:
+            return 0
+        return max(0, (date.today() - self.due_date).days)
+
+    def derive_status(self) -> "InvoiceStatus":
+        """What the status should be, given the payments and the date.
+
+        Draft and cancelled are set by a person and are never overridden — an
+        invoice nobody has sent cannot become overdue.
+        """
+        if self.status in (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED):
+            return self.status
+        if self.is_settled:
+            return InvoiceStatus.PAID
+        if self.amount_paid > 0:
+            return InvoiceStatus.PARTIAL
+        if self.due_date and self.due_date < date.today():
+            return InvoiceStatus.OVERDUE
+        return self.status if self.status == InvoiceStatus.VIEWED else InvoiceStatus.SENT
+
+    def recalculate_payments(self) -> None:
+        """Recompute the cached total and status from the payment rows."""
+        self.paid_amount = self.amount_paid
+        self.status = self.derive_status()
+
 
 class InvoiceItem(db.Model):
     """Individual line items for invoices"""
@@ -626,6 +820,10 @@ class Project(db.Model):
     location = Column(String(200))
     status = Column(String(20), default="active")
     schedule_type = Column(db.Enum(ScheduleType), default=ScheduleType.GANTT)
+    # The "as of" date that progress is reported against. Every schedule metric
+    # is measured relative to this: an activity is late only with respect to a
+    # data date. Defaults to the project start until the first update.
+    data_date = Column(Date)
     azure_project_id = Column(String(100))
     fabric_dataset_id = Column(String(100))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -644,6 +842,18 @@ class Project(db.Model):
     transactions = relationship("Transaction", back_populates="project")
     budgets = relationship("ProjectBudget", back_populates="project", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="project")
+    baselines = relationship(
+        "ScheduleBaseline", back_populates="project", cascade="all, delete-orphan"
+    )
+
+    @property
+    def current_baseline(self):
+        return next((b for b in self.baselines if b.is_current), None)
+
+    @property
+    def effective_data_date(self):
+        """The reporting date, falling back to the project start."""
+        return self.data_date or self.start_date
 
     __table_args__ = (
         db.Index("ix_projects_company", "company_id"),
@@ -661,12 +871,25 @@ class Task(db.Model):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     parent_task_id = Column(Integer, ForeignKey("tasks.id"))
     wbs_code = Column(String(50))
+    # Current plan. These are an output of the CPM calculation.
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     duration = Column(Integer, nullable=False)  # in days
     progress = Column(Float, default=0.0)  # percentage
     status = Column(db.Enum(TaskStatus), default=TaskStatus.NOT_STARTED)
     priority = Column(String(10), default="medium")
+
+    # The approved baseline these dates are measured against, copied from the
+    # current ScheduleBaseline. Without a baseline there is nothing to be late
+    # relative to, so DCMA checks 11 and 14 cannot be evaluated at all.
+    baseline_start = Column(Date)
+    baseline_finish = Column(Date)
+    baseline_duration = Column(Integer)
+
+    # What actually happened. actual_finish being set is what makes an activity
+    # complete; the status enum is a label, these are the record.
+    actual_start = Column(Date)
+    actual_finish = Column(Date)
     location = Column(String(200))  # for linear scheduling
     station_start = Column(Float)  # for linear scheduling
     station_end = Column(Float)  # for linear scheduling
@@ -707,8 +930,82 @@ class Task(db.Model):
         db.Index("ix_tasks_project", "project_id"),
         db.Index("ix_tasks_project_status", "project_id", "status"),
         db.Index("ix_tasks_project_start", "project_id", "start_date"),
+        db.Index("ix_tasks_project_actual_finish", "project_id", "actual_finish"),
         db.Index("ix_tasks_parent", "parent_task_id"),
     )
+
+    @property
+    def is_complete(self) -> bool:
+        """Complete means a recorded actual finish, not a status label."""
+        return self.actual_finish is not None
+
+    @property
+    def is_started(self) -> bool:
+        return self.actual_start is not None
+
+    @property
+    def start_variance_days(self):
+        """Calendar days late starting. Negative means early. None if unknown."""
+        if self.actual_start is None or self.baseline_start is None:
+            return None
+        return (self.actual_start - self.baseline_start).days
+
+    @property
+    def finish_variance_days(self):
+        """Calendar days late finishing. Negative means early. None if unknown."""
+        if self.actual_finish is None or self.baseline_finish is None:
+            return None
+        return (self.actual_finish - self.baseline_finish).days
+
+    @property
+    def plan_vs_baseline_days(self):
+        """Slip in the *forecast* against baseline, for work not yet finished.
+
+        This is the early-warning number: it moves before an activity is late,
+        because it compares where the plan now says it will finish.
+        """
+        if self.end_date is None or self.baseline_finish is None:
+            return None
+        return (self.end_date - self.baseline_finish).days
+
+
+class ScheduleBaseline(db.Model):
+    """A frozen snapshot of a project's dates, to measure progress against.
+
+    The current baseline is also denormalised onto ``Task.baseline_*`` so the
+    common case — "is this activity late?" — is a column read rather than a
+    join plus a JSON lookup. This table keeps the history, which is what makes
+    revision-to-revision comparison possible later.
+    """
+
+    __tablename__ = "schedule_baselines"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    name = Column(String(120), nullable=False)
+    notes = Column(Text)
+
+    # {task_id (as string): {"start": iso, "finish": iso, "duration": int}}
+    snapshot = Column(JSON, nullable=False)
+
+    # Exactly one baseline per project is current; setting a new one clears
+    # the flag on the others.
+    is_current = Column(Boolean, default=True, nullable=False)
+
+    set_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    set_by_id = Column(Integer, ForeignKey("users.id"))
+
+    project = relationship("Project", back_populates="baselines")
+    set_by = relationship("User", foreign_keys=[set_by_id])
+
+    __table_args__ = (
+        db.Index("ix_schedule_baselines_project", "project_id"),
+        db.Index("ix_schedule_baselines_current", "project_id", "is_current"),
+    )
+
+    @property
+    def task_count(self) -> int:
+        return len(self.snapshot or {})
 
 
 class TaskDependency(db.Model):

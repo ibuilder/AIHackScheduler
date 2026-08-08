@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}New Invoice{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('financial.invoice_list') }}">Invoices</a></li>
+                    <li class="breadcrumb-item active">New</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-0">New invoice</h1>
+        </div>
+    </div>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-header"><h2 class="h6 mb-0">Client</h2></div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label" for="client_name">Client name</label>
+                            <input type="text" class="form-control" id="client_name" name="client_name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="client_email">Email</label>
+                            <input type="email" class="form-control" id="client_email" name="client_email">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label" for="client_address">Address</label>
+                            <textarea class="form-control" id="client_address" name="client_address" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2 class="h6 mb-0">Line items</h2>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-line-item">
+                            Add line
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table mb-0" id="line-items">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 55%">Description</th>
+                                        <th style="width: 15%">Qty</th>
+                                        <th style="width: 20%">Unit price</th>
+                                        <th style="width: 10%"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><input type="text" class="form-control" name="item_description[]" required></td>
+                                        <td><input type="number" step="0.01" min="0" class="form-control font-monospace" name="item_quantity[]" value="1" required></td>
+                                        <td><input type="number" step="0.01" min="0" class="form-control font-monospace" name="item_price[]" value="0.00" required></td>
+                                        <td class="text-end">
+                                            <button type="button" class="btn btn-sm btn-outline-danger remove-line">Remove</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header"><h2 class="h6 mb-0">Invoice details</h2></div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label" for="project_id">Project</label>
+                            <select class="form-select" id="project_id" name="project_id">
+                                <option value="">Not project-specific</option>
+                                {% for project in projects %}
+                                <option value="{{ project.id }}">{{ project.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="issue_date">Issue date</label>
+                            <input type="date" class="form-control" id="issue_date" name="issue_date"
+                                   value="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="due_date">Due date</label>
+                            <input type="date" class="form-control" id="due_date" name="due_date" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="tax_rate">Tax rate</label>
+                            <div class="input-group">
+                                <input type="number" step="0.0001" min="0" max="1"
+                                       class="form-control font-monospace" id="tax_rate" name="tax_rate" value="0">
+                                <span class="input-group-text">as a fraction, e.g. 0.20</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="payment_terms">Payment terms</label>
+                            <input type="text" class="form-control" id="payment_terms" name="payment_terms"
+                                   placeholder="Net 30">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label" for="notes">Notes</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">Create invoice</button>
+                <a href="{{ url_for('financial.invoice_list') }}" class="btn btn-link w-100 mt-2">Cancel</a>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const table = document.querySelector('#line-items tbody');
+
+    document.getElementById('add-line-item').addEventListener('click', function () {
+        const row = table.rows[0].cloneNode(true);
+        row.querySelectorAll('input').forEach(function (input) {
+            if (input.name === 'item_quantity[]') {
+                input.value = '1';
+            } else if (input.name === 'item_price[]') {
+                input.value = '0.00';
+            } else {
+                input.value = '';
+            }
+        });
+        table.appendChild(row);
+    });
+
+    // Keep at least one line: submitting an invoice with no items would
+    // create a zero-total invoice nobody intended.
+    table.addEventListener('click', function (event) {
+        if (!event.target.classList.contains('remove-line')) return;
+        if (table.rows.length === 1) return;
+        event.target.closest('tr').remove();
+    });
+})();
+</script>
+{% endblock %}
