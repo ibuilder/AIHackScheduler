@@ -98,6 +98,11 @@ py-modules = ["app", "extensions", "main", "models", "routes", "seed_demo"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+markers = [
+    # Migration tests shell out to the Flask CLI and build real databases, so
+    # they run in seconds rather than milliseconds. Skip with -m "not slow".
+    "slow: spawns a subprocess and builds a database",
+]
 filterwarnings = ["error::DeprecationWarning:core.*"]
 
 [tool.ruff]

@@ -150,7 +150,7 @@ the assessment has real defects to find — it grades **F (54.5%)** and names ea
 
 ### Verification
 
-274 tests. The CPM tests use networks whose answers can be checked by hand, which is the
+284 tests. The CPM tests use networks whose answers can be checked by hand, which is the
 only way to be confident about a scheduling engine. CI runs tests on Python 3.11/3.12/3.13,
 lints with ruff, and boots and seeds the application on every push.
 
@@ -193,6 +193,22 @@ every machine on every dashboard. The demo fleet reads 6.9% to 100% across six m
 status, voids in error while keeping the row, and buckets aged receivables. This is
 bookkeeping, not card processing — see item 4 below.
 
+**Migrations.** The schema changed six times during the rebuild with nothing to apply
+those changes to an existing database — `create_all` only ever adds missing tables. There
+are now two migrations: `0001_baseline` recreating the schema exactly as it stood at the
+original commit, so an older database can be stamped against it, and `0002_rebuild_schema`
+carrying the delta.
+
+The awkward part was `project_number`, which the original schema declared with a bare
+`unique=True`. That produces an *unnamed* constraint, which Alembic cannot autodetect, so
+the generated migration added the new per-company constraint while leaving the global one
+still enforcing — the bug would have survived its own fix. It is dropped explicitly by
+rebuilding the table with `copy_from`. A batch block containing no operations does not
+trigger a rebuild at all, which cost a round of debugging.
+
+The container entrypoint now runs `flask db upgrade` rather than `init-db`, and CI fails
+if the models change without a migration.
+
 **File exchange.** `core/exchange.py` holds a format-neutral schedule model;
 `core/xer.py` and `core/mspdi.py` read and write Primavera XER and Microsoft Project XML.
 Both are pure Python. Binary `.mpp` can be read through the optional MPXJ package but
@@ -219,9 +235,9 @@ not exist. `tests/test_templates.py` now asserts every rendered template resolve
    computed; nothing surfaces it yet. This is the feature people would pay for.
 2. **Schedule comparison between baselines.** The snapshots are stored; diffing them —
    what moved, what was added, what logic changed — is where delay analysis starts.
-3. **Adopt Flask-Migrate properly.** `flask db init` and a baseline migration; remove the
-   remaining reliance on `create_all` outside tests. This matters more now that the schema
-   has grown new tables and columns.
+3. **Resource-levelled scheduling (RCPSP).** The optimiser still emits generic advice
+   ("consider dynamic resource allocation") where a serial-schedule-generation heuristic
+   over existing assignments would produce real levelled dates.
 4. **Card processing, or an explicit decision not to.** Payments are recorded, not taken.
    Actually taking money needs key management, webhook reconciliation and PCI scope — a
    different problem, deliberately not attempted rather than half-built.
