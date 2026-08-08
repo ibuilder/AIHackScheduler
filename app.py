@@ -142,7 +142,10 @@ def create_app(config_class=None):
     # Initialize extensions
     db.init_app(app)
     login_manager.init_app(app)
-    migrate.init_app(app, db)
+    # render_as_batch rebuilds a table to apply an ALTER, which SQLite cannot
+    # do directly. Development runs on SQLite, so without this every migration
+    # that changes a column fails there while working fine on PostgreSQL.
+    migrate.init_app(app, db, render_as_batch=True)
     csrf.init_app(app)
 
     # Configure login manager
@@ -284,11 +287,29 @@ def register_cli(app):
 
     @app.cli.command("init-db")
     def init_db():
-        """Create every table from the current models."""
+        """Create every table from the current models, for a scratch database.
+
+        Prefer `flask db upgrade`, which is what deployments run. create_all
+        only adds missing tables — it never alters an existing one — so on a
+        database from an earlier release it silently leaves old columns and
+        constraints in place. This stays for throwaway local databases and for
+        the test fixtures, which build from scratch every time.
+        """
         import models  # noqa: F401
 
         db.create_all()
-        print(f"Schema created in {app.config['SQLALCHEMY_DATABASE_URI']}")
+        # Mark it current so a later `db upgrade` does not try to re-run
+        # migrations against a schema that already has everything.
+        try:
+            from flask_migrate import stamp
+
+            stamp()
+            stamped = " and stamped at head"
+        except Exception as exc:  # pragma: no cover - only if alembic is absent
+            stamped = f" (could not stamp: {exc})"
+
+        print(f"Schema created in {app.config['SQLALCHEMY_DATABASE_URI']}{stamped}")
+        print("For anything you intend to keep, use: flask db upgrade")
 
     @app.cli.command("seed-demo")
     def seed_demo():

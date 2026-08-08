@@ -11,10 +11,14 @@ set -e
 if [ "${SKIP_DB_INIT}" = "1" ]; then
     echo "entrypoint: SKIP_DB_INIT=1, leaving the schema alone"
 else
+    # `flask db upgrade`, not `init-db`. create_all only adds missing tables —
+    # it never alters an existing one — so a database from an earlier release
+    # would silently keep its old columns and constraints.
+    #
     # Postgres accepts connections before it is ready to serve them, so retry
     # rather than assuming depends_on was enough.
     attempt=1
-    until flask --app app init-db; do
+    until flask --app app db upgrade; do
         if [ "$attempt" -ge 15 ]; then
             echo "entrypoint: database did not become ready after $attempt attempts" >&2
             exit 1

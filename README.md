@@ -5,7 +5,7 @@
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-274%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-284%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
 computes the critical path properly, then grades the schedule against the
@@ -21,7 +21,7 @@ git clone https://github.com/ibuilder/AIHackScheduler.git
 cd AIHackScheduler
 pip install -r requirements.txt
 export SESSION_SECRET=dev-secret          # Windows: set SESSION_SECRET=dev-secret
-flask --app app init-db
+flask --app app db upgrade
 flask --app app seed-demo
 flask --app app run
 ```
@@ -207,7 +207,7 @@ services/
   optional.py              Lazy loading for every optional integration
 blueprints/                Flask routes, one per feature area
 models.py                  SQLAlchemy models, multi-tenant by company
-tests/                     274 tests, hand-checked scheduling networks
+tests/                     284 tests, hand-checked scheduling networks
 seed_demo.py               A realistic, deliberately imperfect demo project
 ```
 
@@ -243,13 +243,13 @@ pip install -e ".[dev]"            # pytest, ruff
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 274 tests
+pytest                    # 284 tests
 ruff check .              # lint
 ruff format .             # format
 ```
 
-CI runs tests on Python 3.11, 3.12 and 3.13, lints, builds the wheel, and boots and seeds
-the application on every push.
+CI runs tests on Python 3.11, 3.12 and 3.13, lints, builds the wheel and the Docker image,
+checks migrations match the models, and boots and seeds the application on every push.
 
 ---
 
@@ -263,10 +263,35 @@ Brings up the application, PostgreSQL, Redis and the Celery worker and beat sche
 build context is the repository root, so run it from there. Set `DB_PASSWORD` and
 `SESSION_SECRET` first; add `SEED_DEMO=1` to load the demo project on first start.
 
-Schema creation is deliberate rather than an import side effect — `db.create_all()` used to
-run whenever `app.py` was imported, which raced across gunicorn workers. The container
-entrypoint creates it before starting, retrying until PostgreSQL is accepting queries.
-Workers run with `SKIP_DB_INIT=1` so they cannot race the web process.
+The container entrypoint runs `flask db upgrade` before starting, retrying until PostgreSQL
+is accepting queries. Workers run with `SKIP_DB_INIT=1` so they cannot race the web process.
+
+### Migrations
+
+```bash
+flask --app app db upgrade      # bring a database to the current schema
+flask --app app db migrate -m   # after changing a model
+flask --app app db check        # is anything unmigrated?
+```
+
+`0001_baseline` is the schema exactly as it stood at the original commit. `0002_rebuild_schema`
+carries everything this rebuild added: baseline and actual dates, the data date, schedule
+baselines, equipment usage and maintenance, the indexes, and moving `project_number` from a
+global unique constraint to one scoped per company.
+
+**If your database predates this work**, stamp it against the baseline first, then upgrade:
+
+```bash
+flask --app app db stamp 0001_baseline
+flask --app app db upgrade
+```
+
+Do not use `init-db` for a database you intend to keep. `create_all` only adds *missing*
+tables — it never alters an existing one — so it would leave old columns and constraints
+silently in place. It stays for scratch databases and test fixtures, and stamps itself at
+head so a later upgrade does not double-apply.
+
+CI fails if the models change without a migration.
 
 `deployment/azure-deploy.yml` describes the same stack as Azure Container Apps.
 

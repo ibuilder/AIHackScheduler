@@ -74,13 +74,57 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Create schema and seed the demo project
+      # `db upgrade`, matching what the container entrypoint runs, rather than
+      # init-db — so the smoke test exercises the real deployment path.
+      - name: Migrate and seed the demo project
         env:
           FLASK_ENV: development
           SESSION_SECRET: ci-smoke-test-secret
         run: |
-          flask --app app init-db
+          flask --app app db upgrade
           flask --app app seed-demo
+
+  migrations:
+    name: Migrations match the models
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # The schema changed six times with no migrations, so an existing
+      # database had no upgrade path. This catches a model change that ships
+      # without one: after upgrading from empty, autogenerate must find nothing
+      # left to do.
+      - name: Upgrade from empty and check for drift
+        env:
+          FLASK_ENV: development
+          SESSION_SECRET: ci-migration-secret
+          DATABASE_URL: sqlite:///ci-migration-check.db
+        run: |
+          flask --app app db upgrade
+          flask --app app db check 2>&1 | tee check.log
+          grep -q "No new upgrade operations detected" check.log || {
+            echo "::error::The models have changed without a migration. Run: flask db migrate"
+            exit 1
+          }
+
+      - name: Downgrade and upgrade again
+        env:
+          FLASK_ENV: development
+          SESSION_SECRET: ci-migration-secret
+          DATABASE_URL: sqlite:///ci-migration-check.db
+        run: |
+          flask --app app db downgrade
+          flask --app app db upgrade
 
   docker:
     name: Image builds and the stack is valid
