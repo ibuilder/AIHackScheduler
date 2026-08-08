@@ -55,6 +55,14 @@ integrations = [
     "flask-dance>=7.1.0",
 ]
 
+# Reading binary .mpp needs MPXJ, which is a Java library reached through
+# JPype — so this extra pulls in a JVM requirement. Everything else, including
+# reading and writing XER and MSPDI XML, is pure Python.
+mpp = [
+    "mpxj>=13",
+    "jpype1>=1.5",
+]
+
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

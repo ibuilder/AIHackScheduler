@@ -5,16 +5,27 @@ model call involved. They are the layer the AI features are supposed to reason
 *about*, so they need to be right before anything downstream can be trusted.
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 from flask_login import current_user, login_required
 
+from audit.audit_logger import audit_logger
 from core.risk import Distribution
+from extensions import db
 from models import Project
+from services.optional import IntegrationUnavailable
 from services.schedule_analysis import (
     analyse_project,
     health_check,
     progress_report,
     set_baseline,
+)
+from services.schedule_io import (
+    ImportError_,
+    capabilities,
+    export_project,
+    import_into_project,
+    read_schedule_file,
+    serialise,
 )
 from services.schedule_risk import DEFAULT_ITERATIONS, simulate_project
 
@@ -161,4 +172,94 @@ def project_critical_path(project_id):
             "critical_path": result["critical_path"],
             "activities": [a for a in result["activities"] if a["is_critical"]],
         }
+    )
+
+
+# ── file import and export ────────────────────────────────────────────────
+
+
+@schedule_api_bp.route("/formats")
+@login_required
+def formats():
+    """What this deployment can read and write, and honestly why not."""
+    return jsonify(capabilities())
+
+
+@schedule_api_bp.route("/import", methods=["POST"])
+@login_required
+def import_schedule():
+    """Create a project from an uploaded .xer, .xml (MSPDI) or .mpp file."""
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "Attach a schedule file as 'file'"}), 400
+
+    data = upload.read()
+    if not data:
+        return jsonify({"error": "The uploaded file is empty"}), 400
+
+    try:
+        schedule = read_schedule_file(data, upload.filename)
+    except IntegrationUnavailable as exc:
+        # Reading .mpp needs MPXJ and a JVM. Say so rather than failing vaguely.
+        return jsonify(exc.as_response()), 501
+    except ImportError_ as exc:
+        return jsonify({"error": str(exc)}), 422
+
+    try:
+        project = import_into_project(
+            schedule,
+            company_id=current_user.company_id,
+            user_id=current_user.id,
+            project_name=(request.form.get("name") or "").strip() or None,
+        )
+    except ImportError_ as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 422
+
+    audit_logger.log_action(
+        action="schedule_imported",
+        resource_type="project",
+        resource_id=project.id,
+        details=f"{schedule.source_format} import of {upload.filename}",
+    )
+
+    return (
+        jsonify(
+            {
+                "success": True,
+                "project_id": project.id,
+                "project_name": project.name,
+                "imported": schedule.summary(),
+                # Anything the reader could not map, surfaced rather than dropped.
+                "warnings": schedule.warnings,
+            }
+        ),
+        201,
+    )
+
+
+@schedule_api_bp.route("/projects/<int:project_id>/export/<export_format>")
+@login_required
+def export_schedule(project_id, export_format):
+    """Download a project as XER or Microsoft Project XML.
+
+    There is no .mpp option: the binary format cannot be written by any
+    available library. Export MSPDI and open it in Project.
+    """
+    _, error = _authorised_project(project_id)
+    if error:
+        return error
+
+    try:
+        schedule = export_project(project_id)
+        content, filename, mimetype = serialise(schedule, export_format)
+    except LookupError:
+        return jsonify({"error": "Project not found"}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return Response(
+        content,
+        mimetype=mimetype,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

@@ -811,7 +811,9 @@ class Project(db.Model):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), nullable=False)
     description = Column(Text)
-    project_number = Column(String(50), unique=True)
+    # Unique per company, not globally: two tenants may each run a project
+    # numbered "P-001", and a global constraint makes the second import fail.
+    project_number = Column(String(50))
     company_id = Column(Integer, ForeignKey("companies.id"))
     created_by = Column(Integer, ForeignKey("users.id"))
     start_date = Column(Date, nullable=False)
@@ -856,6 +858,7 @@ class Project(db.Model):
         return self.data_date or self.start_date
 
     __table_args__ = (
+        db.UniqueConstraint("company_id", "project_number", name="uq_project_number_per_company"),
         db.Index("ix_projects_company", "company_id"),
         db.Index("ix_projects_company_status", "company_id", "status"),
         db.Index("ix_projects_created_by", "created_by"),
