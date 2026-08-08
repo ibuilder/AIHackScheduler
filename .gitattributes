@@ -1,0 +1,27 @@
+# Normalise line endings so a checkout on Windows does not produce files that
+# fail inside a Linux container.
+
+* text=auto
+
+# A shell script with CRLF endings fails with "bad interpreter: no such file or
+# directory" when the container tries to run it. These must stay LF everywhere,
+# including in a Windows working tree.
+*.sh text eol=lf
+deployment/entrypoint.sh text eol=lf
+
+# Dockerfiles and compose files are read by Linux tooling.
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Windows-only helpers keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary, never converted.
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary
+*.sqlite3 binary

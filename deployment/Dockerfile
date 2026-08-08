@@ -23,7 +23,11 @@ WORKDIR /app
 # Install from the single dependency list at the repository root, plus the
 # extras a production deployment needs. Build from the repo root:
 #   docker build -f deployment/Dockerfile -t bbschedule .
-COPY pyproject.toml requirements.txt README.md ./
+#
+# The whole source is copied before the install because pyproject declares its
+# packages explicitly, so setuptools needs those directories to exist. Copying
+# only pyproject.toml gave better layer caching but failed the build outright.
+COPY . .
 RUN pip install --no-cache-dir ".[postgres,async,integrations]"
 
 # Production stage
@@ -57,6 +61,7 @@ COPY . .
 
 # Create necessary directories
 RUN mkdir -p logs uploads temp && \
+    chmod +x deployment/entrypoint.sh && \
     chown -R bbschedule:bbschedule /app
 
 # Switch to non-root user
@@ -68,6 +73,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Expose port
 EXPOSE 5000
+
+# The entrypoint creates the schema before handing off. Schema creation stopped
+# being an import side effect — it used to race across gunicorn workers — so a
+# deployment has to do it deliberately. Set SKIP_DB_INIT=1 for processes that
+# should not touch it, such as the Celery workers.
+ENTRYPOINT ["/app/deployment/entrypoint.sh"]
 
 # Default command
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "--keep-alive", "2", "--max-requests", "1000", "--max-requests-jitter", "100", "--preload", "main:app"]

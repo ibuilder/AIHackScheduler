@@ -109,8 +109,13 @@ applications:
         containers:
           - name: bbschedule-worker
             image: "${ACR_NAME}.azurecr.io/bbschedule:latest"
+            # The Celery application is tasks.celery_config.celery_app. This
+            # named app.celery, which does not exist, so the worker container
+            # could never start. Overriding `command` also bypasses the image
+            # entrypoint, which is correct here — the web revision owns schema
+            # creation and workers must not race it.
             command: ["celery"]
-            args: ["-A", "app.celery", "worker", "--loglevel=info"]
+            args: ["-A", "tasks.celery_config.celery_app", "worker", "--loglevel=info"]
             env:
               - name: FLASK_ENV
                 value: "production"
