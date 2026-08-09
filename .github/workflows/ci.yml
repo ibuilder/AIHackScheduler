@@ -77,9 +77,19 @@ jobs:
               importlib.import_module(name)
               print(f"  {name} imports")
 
+          # Assert the status. This step used to call the endpoint and throw
+          # the response away, so it reported success while /health/health was
+          # returning 503 on every request — which is precisely the bug the
+          # Docker HEALTHCHECK and the Kubernetes readiness probe depend on
+          # this endpoint not having.
           from app import create_app
-          create_app().test_client().get("/health/health")
-          print("app boots with every extra installed")
+
+          response = create_app().test_client().get("/health/health")
+          assert response.status_code == 200, (
+              f"/health/health returned {response.status_code}: "
+              f"{response.get_data(as_text=True)}"
+          )
+          print("app boots with every extra installed, and reports healthy")
           EOF
 
       # The MPXJ bridge needs a JVM, which is why it had never run anywhere.
