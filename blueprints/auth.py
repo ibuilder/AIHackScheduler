@@ -1,4 +1,4 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -46,15 +46,54 @@ def logout():
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == "POST":
-        username = request.form.get("username")
-        email = request.form.get("email")
-        password = request.form.get("password")
-        first_name = request.form.get("first_name")
-        last_name = request.form.get("last_name")
-        company_name = request.form.get("company_name")
+    """Self-registration, which creates a new company.
 
-        # Check if user already exists
+    Two things were wrong here, both reachable without a session.
+
+    The company was created and flushed before any field was validated, so an
+    empty POST inserted ``Company(name=None)`` and raised IntegrityError — a
+    500 on an unauthenticated endpoint. A request carrying a company name but
+    no password got as far as creating the company and then bailed on the
+    password check, leaving an orphan company behind.
+
+    More seriously, a registration naming an *existing* company joined it::
+
+        company = Company.query.filter_by(name=company_name).first()
+        ...
+        user.role = PROJECT_MANAGER if not company.users else SCHEDULER
+
+    So anyone who guessed a customer's company name received a scheduler
+    account inside that tenant, and with it every project the tenant owns.
+    Joining an existing company is an invitation, issued by an administrator of
+    that company from the users page — never something a stranger asserts about
+    themselves.
+    """
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        email = (request.form.get("email") or "").strip()
+        password = request.form.get("password") or ""
+        first_name = (request.form.get("first_name") or "").strip()
+        last_name = (request.form.get("last_name") or "").strip()
+        company_name = (request.form.get("company_name") or "").strip()
+
+        # Validate everything before writing anything.
+        required = {
+            "username": username,
+            "email": email,
+            "password": password,
+            "first name": first_name,
+            "last name": last_name,
+            "company name": company_name,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            flash(f"Please provide: {', '.join(missing)}.", "error")
+            return render_template("auth/register.html")
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return render_template("auth/register.html")
+
         if User.query.filter_by(username=username).first():
             flash("Username already exists", "error")
             return render_template("auth/register.html")
@@ -63,30 +102,39 @@ def register():
             flash("Email already registered", "error")
             return render_template("auth/register.html")
 
-        # Create or get company
-        company = Company.query.filter_by(name=company_name).first()
-        if not company:
+        # Registration creates a company. It never joins one.
+        if Company.query.filter_by(name=company_name).first():
+            flash(
+                "An organisation with that name is already registered. Ask one of its "
+                "administrators to create an account for you.",
+                "error",
+            )
+            return render_template("auth/register.html")
+
+        try:
             company = Company()
             company.name = company_name
             db.session.add(company)
-            db.session.flush()  # Get company ID
+            db.session.flush()
 
-        # Create user
-        if not password:
-            flash("Password is required", "error")
+            user = User()
+            user.username = username
+            user.email = email
+            user.password_hash = generate_password_hash(password)
+            user.first_name = first_name
+            user.last_name = last_name
+            user.company_id = company.id
+            # Sole member of a brand new company, so an administrator of it.
+            user.role = UserRole.ADMIN
+            user.is_active = True
+
+            db.session.add(user)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Registration failed")
+            flash("Registration could not be completed. Please try again.", "error")
             return render_template("auth/register.html")
-
-        user = User()
-        user.username = username
-        user.email = email
-        user.password_hash = generate_password_hash(password)
-        user.first_name = first_name
-        user.last_name = last_name
-        user.company_id = company.id
-        user.role = UserRole.PROJECT_MANAGER if not company.users else UserRole.SCHEDULER
-
-        db.session.add(user)
-        db.session.commit()
 
         flash("Registration successful! Please log in.", "success")
         return redirect(url_for("auth.login"))

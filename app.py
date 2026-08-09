@@ -159,10 +159,11 @@ def create_app(config_class=None):
     def load_user(user_id):
         from models import User
 
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
 
     # Register blueprints
-    from admin.user_management import admin_bp as user_mgmt_bp
+    # Retired /management surface: redirects only. See admin/user_management.py.
+    from admin.user_management import user_management_bp
     from analytics.advanced_analytics import analytics_bp
     from azure_ai.predictive_analytics import azure_ai_bp
     from blueprints.admin import admin_bp
@@ -189,7 +190,7 @@ def create_app(config_class=None):
     app.register_blueprint(reports_bp, url_prefix="/reports")
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(analytics_bp, url_prefix="/api/analytics")
-    app.register_blueprint(user_mgmt_bp, url_prefix="/management")
+    app.register_blueprint(user_management_bp, url_prefix="/management")
     app.register_blueprint(project_templates_bp, url_prefix="/project-templates")
     app.register_blueprint(collaboration_bp, url_prefix="/collaboration")
     app.register_blueprint(executive_bp, url_prefix="/")

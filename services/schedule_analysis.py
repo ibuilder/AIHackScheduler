@@ -26,7 +26,7 @@ from models import Project, ResourceAssignment, ScheduleBaseline, Task, TaskDepe
 
 def load_network(project_id: int) -> tuple[list[Activity], list[Relationship], WorkCalendar]:
     """Read a project out of the database as a pure logic network."""
-    project = Project.query.get(project_id)
+    project = db.session.get(Project, project_id)
     if project is None:
         raise LookupError(f"Project {project_id} not found")
 
@@ -165,7 +165,7 @@ def health_check(project_id: int) -> dict[str, Any]:
     # not, they are omitted and the checks report as skipped. Deriving
     # "actuals" from the CPM forward pass would make them look assessed while
     # measuring nothing but the plan against itself.
-    project = Project.query.get(project_id)
+    project = db.session.get(Project, project_id)
     calendar = WorkCalendar(project.start_date)
     tasks = Task.query.filter(Task.id.in_(task_ids)).all()
 
@@ -203,7 +203,7 @@ def health_check(project_id: int) -> dict[str, Any]:
 
 def progress_report(project_id: int) -> dict[str, Any]:
     """Measure the project against its baseline: BEI, variance, slippage."""
-    project = Project.query.get(project_id)
+    project = db.session.get(Project, project_id)
     if project is None:
         return {"success": False, "error": f"Project {project_id} not found"}
 
@@ -255,7 +255,7 @@ def progress_report(project_id: int) -> dict[str, Any]:
 
 def set_baseline(project_id: int, name: str, user_id: int | None = None, notes: str = ""):
     """Freeze the current plan as the baseline everything is measured against."""
-    project = Project.query.get(project_id)
+    project = db.session.get(Project, project_id)
     if project is None:
         raise LookupError(f"Project {project_id} not found")
 

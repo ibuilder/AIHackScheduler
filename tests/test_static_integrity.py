@@ -174,3 +174,36 @@ def test_the_known_gaps_are_still_real():
         assert not fixed, (
             f"{relative}::{class_name} now defines {sorted(fixed)} — remove them from KNOWN_MISSING"
         )
+
+
+# ── SQLAlchemy legacy API ────────────────────────────────────────────────
+
+
+def test_nothing_uses_the_legacy_query_get():
+    """``Model.query.get(id)`` is legacy in SQLAlchemy 2.0 and removed in 2.1.
+
+    The bound in pyproject is ``sqlalchemy<3``, so 2.1 arrives as a Dependabot
+    proposal and takes 22 call sites with it — on code nobody touched. This is
+    the third instance of that shape in this repository, after
+    ``db.engine.execute`` (removed in 2.0, and it had been failing every health
+    check since) and MPXJ renaming its Java package. Use
+    ``db.session.get(Model, id)``.
+
+    ``get_or_404`` is Flask-SQLAlchemy's own and is not affected.
+    """
+    import re
+
+    offenders = []
+    # Matches `Something.query.get(` but not `.query.get_or_404(`.
+    pattern = re.compile(r"\.query\.get\(")
+
+    for path in _python_files():
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if pattern.search(line):
+                relative = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
+                offenders.append(f"{relative}:{number}")
+
+    assert not offenders, (
+        "Query.get() is removed in SQLAlchemy 2.1; use db.session.get(Model, id): "
+        + ", ".join(offenders)
+    )

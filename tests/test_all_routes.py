@@ -142,11 +142,13 @@ def test_the_pages_that_used_to_be_500s_now_render(walk_context):
     """
     client, values = walk_context
 
+    # The /management paths these used to live at now 308 to /admin; that
+    # redirect is covered by tests/test_mutating_routes.py.
     pages = [
-        f"/management/users/{values['user_id']}/edit",
-        "/management/company/settings",
-        "/management/audit-logs",
-        "/management/system-status",
+        f"/admin/users/{values['user_id']}/edit",
+        "/admin/company/settings",
+        "/admin/audit-logs",
+        "/admin/system-status",
         "/azure/dashboard",
         f"/azure/configure/{values['project_id']}",
         "/project-templates/my-templates",

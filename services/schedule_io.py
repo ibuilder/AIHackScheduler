@@ -500,7 +500,7 @@ def import_into_project(
 
 def export_project(project_id: int) -> ExchangeSchedule:
     """Read a stored project out as an :class:`ExchangeSchedule`."""
-    project = Project.query.get(project_id)
+    project = db.session.get(Project, project_id)
     if project is None:
         raise LookupError(f"Project {project_id} not found")
 

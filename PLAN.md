@@ -283,9 +283,16 @@ not exist. `tests/test_templates.py` now asserts every rendered template resolve
 6. **Schedule comparison between baselines.** The snapshots are stored; diffing them —
    what moved, what was added, what logic changed — is where delay analysis starts, and
    delay analysis is where the money is in construction.
-7. **The remaining facade.** `reports/executive_dashboard.py` generates its revenue trends
-   and geographic breakdown. Those payloads now carry a `simulated` flag so the UI can
-   label them, but generated figures in an executive dashboard should be built or removed.
+7. **The remaining facade — resolved.** `reports/executive_dashboard.py` now measures.
+   Revenue and cost come from the transaction ledger and invoices, bucketed by month in
+   Python rather than with `func.strftime`, which is SQLite-only and would have worked in
+   development and failed on the PostgreSQL this deploys to. Geography groups by
+   `Project.location`; sector by the construction template a project was created from.
+   Every figure is `None` with a reason where nothing supports it.
+
+   The subtler fix was separating realised margin from budget consumed. On unfinished work
+   `(budget - spend) / budget` is not margin, it is money not yet spent — and reporting it
+   as margin made the least advanced project look like the most profitable.
    It is now the only one left: the nine missing pages are built, the eleven analytics
    helpers are implemented, and `admin/system_status.html` no longer reports a hardcoded
    "245ms average response time, 127 requests per minute, 0.2% error rate" — it measures

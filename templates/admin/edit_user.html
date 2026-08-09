@@ -8,7 +8,7 @@
         <div class="col">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-2">
-                    <li class="breadcrumb-item"><a href="{{ url_for('user_management.manage_users') }}">Users</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.manage_users') }}">Users</a></li>
                     <li class="breadcrumb-item active" aria-current="page">{{ user.username }}</li>
                 </ol>
             </nav>
@@ -93,7 +93,7 @@
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-floppy-disk me-2"></i>Save changes
                             </button>
-                            <a href="{{ url_for('user_management.manage_users') }}" class="btn btn-outline-secondary">Cancel</a>
+                            <a href="{{ url_for('admin.manage_users') }}" class="btn btn-outline-secondary">Cancel</a>
                         </div>
                     </form>
                 </div>
@@ -113,7 +113,7 @@
                         <span class="badge bg-info text-dark">{{ user.role.value.replace('_', ' ')|title }}</span>
                     </p>
                     {% if user.is_active %}
-                    <form method="post" action="{{ url_for('user_management.deactivate_user', user_id=user.id) }}">
+                    <form method="post" action="{{ url_for('admin.deactivate_user', user_id=user.id) }}">
                         {% if csrf_token is defined %}
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% endif %}
@@ -122,7 +122,7 @@
                         </button>
                     </form>
                     {% else %}
-                    <form method="post" action="{{ url_for('user_management.activate_user', user_id=user.id) }}">
+                    <form method="post" action="{{ url_for('admin.activate_user', user_id=user.id) }}">
                         {% if csrf_token is defined %}
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         {% endif %}

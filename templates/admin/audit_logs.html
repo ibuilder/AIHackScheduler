@@ -71,14 +71,14 @@
         <ul class="pagination justify-content-center">
             <li class="page-item {% if not logs.has_prev %}disabled{% endif %}">
                 <a class="page-link"
-                   href="{% if logs.has_prev %}{{ url_for('user_management.audit_logs', page=logs.prev_num) }}{% else %}#{% endif %}">
+                   href="{% if logs.has_prev %}{{ url_for('admin.audit_logs', page=logs.prev_num) }}{% else %}#{% endif %}">
                     Previous
                 </a>
             </li>
             {% for page_number in logs.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
                 {% if page_number %}
                 <li class="page-item {% if page_number == logs.page %}active{% endif %}">
-                    <a class="page-link" href="{{ url_for('user_management.audit_logs', page=page_number) }}">{{ page_number }}</a>
+                    <a class="page-link" href="{{ url_for('admin.audit_logs', page=page_number) }}">{{ page_number }}</a>
                 </li>
                 {% else %}
                 <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
@@ -86,7 +86,7 @@
             {% endfor %}
             <li class="page-item {% if not logs.has_next %}disabled{% endif %}">
                 <a class="page-link"
-                   href="{% if logs.has_next %}{{ url_for('user_management.audit_logs', page=logs.next_num) }}{% else %}#{% endif %}">
+                   href="{% if logs.has_next %}{{ url_for('admin.audit_logs', page=logs.next_num) }}{% else %}#{% endif %}">
                     Next
                 </a>
             </li>

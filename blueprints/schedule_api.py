@@ -34,7 +34,7 @@ schedule_api_bp = Blueprint("schedule_api", __name__)
 
 def _authorised_project(project_id):
     """Fetch a project scoped to the caller's company, or return an error."""
-    project = Project.query.get(project_id)
+    project = db.session.get(Project, project_id)
     if project is None:
         return None, (jsonify({"error": "Project not found"}), 404)
     if project.company_id != current_user.company_id:

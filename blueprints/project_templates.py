@@ -188,11 +188,22 @@ def api_estimate_project(template_id):
     try:
         template = ConstructionProjectTemplates.get_template(template_id)
 
-        # Get estimation parameters
-        data = request.get_json()
-        crew_size_factor = data.get("crew_size_factor", 1.0)
-        complexity_factor = data.get("complexity_factor", 1.0)
-        weather_factor = data.get("weather_factor", 1.0)
+        # request.get_json() returns None for a non-JSON body, and the bare
+        # except below reported that as a 500 -- a server error for a client
+        # mistake. A crew size of zero divides by zero for the same reason.
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "A JSON object body is required", "success": False}), 400
+
+        try:
+            crew_size_factor = float(data.get("crew_size_factor", 1.0))
+            complexity_factor = float(data.get("complexity_factor", 1.0))
+            weather_factor = float(data.get("weather_factor", 1.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Factors must be numbers", "success": False}), 400
+
+        if crew_size_factor <= 0:
+            return jsonify({"error": "Crew size factor must be positive", "success": False}), 400
 
         # Calculate adjusted timeline
         base_duration = sum(task.get("duration", 0) for task in template.get("tasks", []))

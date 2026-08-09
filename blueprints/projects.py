@@ -9,6 +9,17 @@ from models import Project, Resource, ScheduleType, Task
 projects_bp = Blueprint("projects", __name__)
 
 
+def _json_body() -> dict:
+    """The request body as a dict, or an empty one.
+
+    ``request.json`` raises on a body that is not JSON, which surfaced as a 500
+    rather than a 400. Returning an empty dict lets the field checks below
+    report what is actually missing.
+    """
+    payload = request.get_json(silent=True)
+    return payload if isinstance(payload, dict) else {}
+
+
 @projects_bp.route("/")
 @login_required
 def list_projects():
@@ -120,18 +131,39 @@ def create_task(project_id):
     if current_user.company_id != project.company_id:
         return jsonify({"error": "Access denied"}), 403
 
+    # Validate before constructing. strptime(None) raises TypeError, which
+    # escaped as a 500 -- a POST with no body crashed the server rather than
+    # being told what it was missing.
+    body = _json_body()
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    dates = {}
+    for field in ("start_date", "end_date"):
+        raw = body.get(field)
+        if not raw:
+            return jsonify({"error": f"{field} is required (YYYY-MM-DD)"}), 400
+        try:
+            dates[field] = datetime.strptime(raw, "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return jsonify({"error": f"{field} must be YYYY-MM-DD"}), 400
+
+    if dates["end_date"] < dates["start_date"]:
+        return jsonify({"error": "end_date cannot precede start_date"}), 400
+
     task = Task(
-        name=request.json.get("name"),
-        description=request.json.get("description"),
+        name=name,
+        description=body.get("description"),
         project_id=project_id,
-        start_date=datetime.strptime(request.json.get("start_date"), "%Y-%m-%d").date(),
-        end_date=datetime.strptime(request.json.get("end_date"), "%Y-%m-%d").date(),
-        duration=request.json.get("duration", 1),
-        priority=request.json.get("priority", "medium"),
-        location=request.json.get("location"),
-        station_start=request.json.get("station_start"),
-        station_end=request.json.get("station_end"),
-        pull_plan_week=request.json.get("pull_plan_week"),
+        start_date=dates["start_date"],
+        end_date=dates["end_date"],
+        duration=body.get("duration", 1),
+        priority=body.get("priority", "medium"),
+        location=body.get("location"),
+        station_start=body.get("station_start"),
+        station_end=body.get("station_end"),
+        pull_plan_week=body.get("pull_plan_week"),
     )
 
     db.session.add(task)
@@ -156,15 +188,23 @@ def create_resource(project_id):
     if current_user.company_id != project.company_id:
         return jsonify({"error": "Access denied"}), 403
 
+    # name and type are NOT NULL, so an empty body raised IntegrityError and
+    # left the session needing a rollback for whatever ran next.
+    body = _json_body()
+    name = (body.get("name") or "").strip()
+    kind = (body.get("type") or "").strip()
+    if not name or not kind:
+        return jsonify({"error": "name and type are required"}), 400
+
     resource = Resource(
-        name=request.json.get("name"),
-        type=request.json.get("type"),
+        name=name,
+        type=kind,
         project_id=project_id,
-        unit=request.json.get("unit"),
-        unit_cost=request.json.get("unit_cost"),
-        total_quantity=request.json.get("total_quantity"),
-        available_quantity=request.json.get("available_quantity"),
-        location=request.json.get("location"),
+        unit=body.get("unit"),
+        unit_cost=body.get("unit_cost"),
+        total_quantity=body.get("total_quantity"),
+        available_quantity=body.get("available_quantity"),
+        location=body.get("location"),
     )
 
     db.session.add(resource)

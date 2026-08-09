@@ -5,7 +5,7 @@
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-327%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-359%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
 computes the critical path properly, then grades the schedule against the
@@ -391,9 +391,18 @@ payment recording and invoice balances, equipment utilisation from logged hours.
 **Working, thin** — project and task management, Gantt/linear/pull-planning views, auth
 and roles, transaction ledger.
 
-**Still a facade** — `reports/executive_dashboard.py` generates its revenue trends and
-geographic breakdown rather than measuring them. Those payloads now carry a `simulated`
-flag so the UI can label them, but they should be built or removed.
+**No facades left** — `reports/executive_dashboard.py` measured nothing: twelve months of
+revenue generated from a 2,500,000 base on a 2% growth curve, a 12% profit margin, four
+hardcoded US regions, and per-size bands where small projects were always 15.2% margin.
+Identical for every company. It now aggregates transactions and invoices by month, groups
+by the location on each project and the template it came from, and returns `None` with a
+stated reason where nothing supports a figure — never zero, because zero profit and unknown
+profit are different statements.
+
+It also separates *realised margin* from *budget consumed*. On unfinished work
+`(budget - spend) / budget` is money not yet spent, and reporting it as margin made the
+least advanced project look like the most profitable: the demo project read "86% margin"
+four months into a two-year job.
 
 **Not attempted** — card processing. Payments are recorded, not taken: no key management,
 no webhook reconciliation, no PCI scope. The README previously advertised "Stripe

@@ -71,13 +71,25 @@ def create_project():
 @login_required
 def quick_add_task():
     """Quick add task via AJAX"""
+    # `request.json` raises when the body is not JSON, and the bare except
+    # below turned that into a 500 -- so a client sending the wrong
+    # content-type got a server error for what is a client mistake.
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "A JSON object body is required"}), 400
+
     try:
-        project_id = request.json.get("project_id")
-        task_name = request.json.get("name")
-        duration = request.json.get("duration", 1)
+        project_id = payload.get("project_id")
+        task_name = payload.get("name")
+        duration = payload.get("duration", 1)
 
         if not all([project_id, task_name]):
             return jsonify({"error": "Project ID and task name required"}), 400
+
+        try:
+            duration = int(duration)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Duration must be a whole number of days"}), 400
 
         # Verify project access
         project = Project.query.get_or_404(project_id)
@@ -88,7 +100,7 @@ def quick_add_task():
         task = Task()
         task.name = task_name
         task.project_id = project_id
-        task.duration = int(duration)
+        task.duration = duration
         task.start_date = date.today()
         task.end_date = date.today()  # Will be calculated properly later
         task.status = TaskStatus.NOT_STARTED
