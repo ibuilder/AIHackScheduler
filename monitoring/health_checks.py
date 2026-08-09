@@ -3,10 +3,29 @@ from datetime import datetime
 
 import psutil
 from flask import Blueprint, current_app, jsonify
+from sqlalchemy import text
 
 from extensions import db
 
 health_bp = Blueprint("health", __name__)
+
+
+def _database_is_reachable() -> None:
+    """Run the cheapest possible query, raising if the database is unusable.
+
+    This used to be ``db.engine.execute("SELECT 1")``. That call was removed in
+    SQLAlchemy 2.0 — the version this project pins — so it raised
+    ``AttributeError`` every time, and every endpoint below reported the
+    database as down.
+
+    Nothing noticed, because the only consumers are probes: the Docker
+    HEALTHCHECK, the compose healthcheck and the Kubernetes readiness probe in
+    deployment/azure-deploy.yml. A container built from this repository
+    reported itself unhealthy for its entire life, and a Kubernetes pod would
+    never have been sent traffic at all.
+    """
+    with db.engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
 
 
 @health_bp.route("/health")
@@ -14,7 +33,7 @@ def health_check():
     """Basic health check endpoint"""
     try:
         # Check database connectivity
-        db.engine.execute("SELECT 1")
+        _database_is_reachable()
 
         return jsonify(
             {
@@ -46,7 +65,7 @@ def detailed_health_check():
 
         # Database check
         try:
-            db.engine.execute("SELECT 1")
+            _database_is_reachable()
             health_data["checks"]["database"] = {"status": "healthy", "response_time_ms": 0}
         except Exception as e:
             health_data["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
@@ -108,7 +127,7 @@ def readiness_check():
     """Kubernetes readiness probe endpoint"""
     try:
         # Check if application is ready to serve requests
-        db.engine.execute("SELECT 1")
+        _database_is_reachable()
 
         return jsonify({"status": "ready", "timestamp": datetime.now().isoformat()}), 200
 
