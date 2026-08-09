@@ -59,7 +59,7 @@ integrations = [
 # JPype — so this extra pulls in a JVM requirement. Everything else, including
 # reading and writing XER and MSPDI XML, is pure Python.
 mpp = [
-    "mpxj>=13,<14",
+    "mpxj>=13,<17",
     "jpype1>=1.5,<2",
 ]
 

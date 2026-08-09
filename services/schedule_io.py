@@ -106,6 +106,23 @@ def read_schedule_file(data: bytes, filename: str) -> ExchangeSchedule:
         raise ImportError_(str(exc)) from exc
 
 
+def _universal_project_reader():
+    """Return MPXJ's ``UniversalProjectReader`` class, whichever package holds it.
+
+    MPXJ 14 renamed its Java package from ``net.sf.mpxj`` to ``org.mpxj``. That
+    is invisible to pip — the distribution is still ``mpxj`` — so an upgrade
+    past 13 left the import raising ``Java package 'net' not found`` at the one
+    moment a user tried to open a .mpp. The upper bound on the ``mpp`` extra was
+    holding that back, which is why widening it is a code change and not just a
+    version change.
+    """
+    try:  # MPXJ >= 14
+        from org.mpxj.reader import UniversalProjectReader  # noqa: E402
+    except ImportError:  # MPXJ 13
+        from net.sf.mpxj.reader import UniversalProjectReader  # noqa: E402
+    return UniversalProjectReader
+
+
 def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
     """Read a binary ``.mpp`` via MPXJ.
 
@@ -137,7 +154,7 @@ def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
         path = Path(directory) / (filename or "schedule.mpp")
         path.write_bytes(data)
 
-        from net.sf.mpxj.reader import UniversalProjectReader  # noqa: E402
+        UniversalProjectReader = _universal_project_reader()
 
         # MPXJ raises a Java exception for a file it cannot parse rather than
         # returning None, and a Java exception is not a ValueError — so without
