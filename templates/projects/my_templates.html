@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Projects from templates - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h1 class="h3 mb-1"><i class="fas fa-clone me-2"></i>Projects from templates</h1>
+                    <p class="text-muted mb-0">Projects you created from a construction template.</p>
+                </div>
+                <a href="{{ url_for('project_templates.template_gallery') }}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Start from a template
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if not projects %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-layer-group fa-2x text-muted mb-3"></i>
+            <h2 class="h5">Nothing here yet</h2>
+            <p class="text-muted mb-3">
+                Projects you create from a template will be listed here, with the
+                template they came from.
+            </p>
+            <a href="{{ url_for('project_templates.template_gallery') }}" class="btn btn-outline-primary">
+                Browse templates
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <div class="row g-4">
+        {% for project in projects %}
+        <div class="col-md-6 col-xl-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h2 class="h5 mb-0">
+                            <a class="text-decoration-none"
+                               href="{{ url_for('projects.project_detail', project_id=project.id) }}">
+                                {{ project.name }}
+                            </a>
+                        </h2>
+                        <span class="badge bg-{{ 'success' if project.status == 'active' else 'secondary' }}">
+                            {{ (project.status or 'unknown')|title }}
+                        </span>
+                    </div>
+
+                    {% if project.template_used %}
+                    <p class="mb-2">
+                        <span class="badge bg-light text-dark border">
+                            <i class="fas fa-layer-group me-1"></i>
+                            {{ project.template_used.replace('_', ' ')|title }}
+                        </span>
+                    </p>
+                    {% endif %}
+
+                    {% if project.description %}
+                    <p class="text-muted small flex-grow-1">{{ project.description|truncate(140) }}</p>
+                    {% else %}
+                    <div class="flex-grow-1"></div>
+                    {% endif %}
+
+                    <dl class="row small mb-0">
+                        <dt class="col-5 text-muted fw-normal">Starts</dt>
+                        <dd class="col-7 mb-1">{{ project.start_date.strftime('%d %b %Y') if project.start_date else '—' }}</dd>
+                        <dt class="col-5 text-muted fw-normal">Finishes</dt>
+                        <dd class="col-7 mb-1">{{ project.end_date.strftime('%d %b %Y') if project.end_date else '—' }}</dd>
+                        <dt class="col-5 text-muted fw-normal">Activities</dt>
+                        <dd class="col-7 mb-1">{{ project.tasks|length }}</dd>
+                        {% if project.location %}
+                        <dt class="col-5 text-muted fw-normal">Location</dt>
+                        <dd class="col-7 mb-0">{{ project.location }}</dd>
+                        {% endif %}
+                    </dl>
+                </div>
+                <div class="card-footer bg-transparent d-flex gap-2">
+                    <a class="btn btn-sm btn-outline-primary flex-fill"
+                       href="{{ url_for('scheduling.gantt_view', project_id=project.id) }}">
+                        <i class="fas fa-chart-gantt me-1"></i>Schedule
+                    </a>
+                    <a class="btn btn-sm btn-outline-secondary flex-fill"
+                       href="{{ url_for('reports.project_report', project_id=project.id) }}">
+                        <i class="fas fa-file-lines me-1"></i>Report
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

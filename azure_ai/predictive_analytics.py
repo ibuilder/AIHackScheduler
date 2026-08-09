@@ -15,7 +15,15 @@ from flask_login import current_user, login_required
 from sqlalchemy import func
 
 from extensions import db
-from models import Project, Task, TaskStatus, Transaction, TransactionType
+from models import (
+    Project,
+    Resource,
+    ResourceAssignment,
+    Task,
+    TaskStatus,
+    Transaction,
+    TransactionType,
+)
 from services.schedule_analysis import health_check
 from services.schedule_risk import simulate_project
 
@@ -647,6 +655,515 @@ class AzureAIPredictiveAnalytics:
             # Fallback parsing
             return {"ai_analysis": response, "parsing_error": True, "fallback_mode": True}
 
+    def _gather_historical_data(self, company_id: int, days_back: int) -> dict[str, Any]:
+        """Company history over the window, bucketed so a trend can be seen.
+
+        The previous version returned four totals for the whole window, which
+        is a snapshot, not history — ``_analyze_trends`` had nothing to compare
+        against. Projects are now bucketed into six periods across the window.
+        """
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days_back)
+
+        projects = Project.query.filter(
+            Project.company_id == company_id,
+            Project.created_at >= datetime.combine(start_date, datetime.min.time()),
+        ).all()
+
+        bucket_count = 6
+        bucket_days = max(1, days_back // bucket_count)
+        periods = [
+            {
+                "starts": (start_date + timedelta(days=i * bucket_days)).isoformat(),
+                "started": 0,
+                "completed": 0,
+            }
+            for i in range(bucket_count)
+        ]
+
+        detail = []
+        for project in projects:
+            created = project.created_at.date() if project.created_at else start_date
+            index = min(bucket_count - 1, max(0, (created - start_date).days // bucket_days))
+            periods[index]["started"] += 1
+            if project.status == "completed":
+                periods[index]["completed"] += 1
+
+            # Schedule quality per project, from the DCMA assessment that
+            # core.schedule_health already implements.
+            score = None
+            try:
+                score = health_check(project.id).get("score")
+            except Exception:  # a project with no network cannot be assessed
+                logging.debug("No schedule health for project %s", project.id)
+
+            spend = (
+                db.session.query(func.coalesce(func.sum(Transaction.amount), 0))
+                .filter(
+                    Transaction.project_id == project.id,
+                    Transaction.transaction_type == TransactionType.EXPENSE,
+                )
+                .scalar()
+                or 0
+            )
+            detail.append(
+                {
+                    "project_id": project.id,
+                    "name": project.name,
+                    "status": project.status,
+                    "budget": project.budget,
+                    "spend": float(spend),
+                    "over_budget": bool(project.budget and float(spend) > project.budget),
+                    "health_score": score,
+                }
+            )
+
+        return {
+            "projects": len(projects),
+            "completed": len([p for p in projects if p.status == "completed"]),
+            "active": len([p for p in projects if p.status == "active"]),
+            "total_value": sum(p.budget for p in projects if p.budget),
+            "analysis_period": days_back,
+            "periods": periods,
+            "projects_detail": detail,
+        }
+
+    def _ai_company_insights(self, historical_data: dict[str, Any]) -> dict[str, Any]:
+        """Summarise the window in numbers that came from the window.
+
+        This used to return three fixed sentences — "Project completion rates
+        are stable", "Resource utilization could be optimized", "Budget
+        adherence is within acceptable range" — regardless of the data, for
+        every company, on every request.
+        """
+        total = historical_data["projects"]
+        completed = historical_data["completed"]
+        detail = historical_data.get("projects_detail", [])
+
+        completion_rate = round(completed / total * 100, 1) if total else None
+        scored = [d for d in detail if d["health_score"] is not None]
+        weak = [d["name"] for d in scored if d["health_score"] < 75]
+        over_budget = [d["name"] for d in detail if d["over_budget"]]
+        spend = sum(d["spend"] for d in detail)
+
+        return {
+            "projects_in_window": total,
+            "completed": completed,
+            "active": historical_data["active"],
+            "completion_rate_percent": completion_rate,
+            "approved_budget": historical_data["total_value"],
+            "recorded_spend": round(spend, 2),
+            "projects_over_budget": over_budget,
+            "projects_below_health_threshold": weak,
+            "schedules_assessed": len(scored),
+            "performance_summary": (
+                f"{completed} of {total} projects opened in the last "
+                f"{historical_data['analysis_period']} days have finished"
+                f"{f' ({completion_rate}%)' if completion_rate is not None else ''}."
+                if total
+                else "No projects were opened in this window."
+            ),
+        }
+
+    # ── resource optimisation ────────────────────────────────────────────
+    #
+    # optimize_resource_allocation called five helpers that were never written,
+    # so it raised AttributeError on its first line of real work and the
+    # blueprint turned that into a generic 500. Everything below is computed
+    # from resource assignments in the database. No model is consulted: an
+    # over-allocated crew is arithmetic, not a matter of opinion, and a
+    # scheduler needs the number rather than a paragraph about it.
+
+    def _analyze_current_resources(self, project_data: dict[str, Any]) -> dict[str, Any]:
+        """Utilisation per resource, from what is actually assigned."""
+        project_id = project_data.get("project_id")
+        resources = Resource.query.filter_by(project_id=project_id).all()
+
+        allocations = []
+        for resource in resources:
+            assigned = (
+                db.session.query(func.coalesce(func.sum(ResourceAssignment.quantity), 0.0))
+                .filter(ResourceAssignment.resource_id == resource.id)
+                .scalar()
+                or 0.0
+            )
+            capacity = resource.total_quantity or 0.0
+            # Capacity of zero means "not tracked", not "infinitely overloaded".
+            utilisation = round(assigned / capacity * 100, 1) if capacity else None
+
+            allocations.append(
+                {
+                    "resource_id": resource.id,
+                    "name": resource.name,
+                    "type": resource.type,
+                    "unit": resource.unit,
+                    "capacity": capacity,
+                    "assigned": round(assigned, 2),
+                    "utilisation_percent": utilisation,
+                    "over_allocated": utilisation is not None and utilisation > 100,
+                    "idle": utilisation is not None and utilisation < 50,
+                    "unit_cost": resource.unit_cost,
+                }
+            )
+
+        measured = [a for a in allocations if a["utilisation_percent"] is not None]
+        return {
+            "resources": allocations,
+            "resource_count": len(allocations),
+            "measured_count": len(measured),
+            "over_allocated": [a["name"] for a in measured if a["over_allocated"]],
+            "under_used": [a["name"] for a in measured if a["idle"]],
+            "mean_utilisation_percent": (
+                round(sum(a["utilisation_percent"] for a in measured) / len(measured), 1)
+                if measured
+                else None
+            ),
+        }
+
+    def _ai_resource_optimization(self, project_data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Concrete moves, each with the numbers that justify it.
+
+        Named ``_ai_`` for the caller that already existed. Azure OpenAI is
+        consulted only to phrase a rationale, and only when configured — the
+        recommendations themselves are deterministic, so two runs on the same
+        data give the same answer, which is the property a schedule review
+        needs.
+        """
+        current = self._analyze_current_resources(project_data)
+        suggestions = []
+
+        for allocation in current["resources"]:
+            utilisation = allocation["utilisation_percent"]
+            if utilisation is None:
+                continue
+
+            if allocation["over_allocated"]:
+                excess = round(allocation["assigned"] - allocation["capacity"], 2)
+                suggestions.append(
+                    {
+                        "resource_id": allocation["resource_id"],
+                        "resource": allocation["name"],
+                        "action": "level",
+                        "severity": "high" if utilisation > 125 else "medium",
+                        "detail": (
+                            f"{allocation['name']} is committed to {allocation['assigned']} "
+                            f"{allocation['unit'] or 'units'} against a capacity of "
+                            f"{allocation['capacity']} ({utilisation}%). Move {excess} "
+                            f"{allocation['unit'] or 'units'} to activities with float, or add capacity."
+                        ),
+                        "excess_units": excess,
+                        "utilisation_percent": utilisation,
+                    }
+                )
+            elif allocation["idle"]:
+                spare = round(allocation["capacity"] - allocation["assigned"], 2)
+                suggestions.append(
+                    {
+                        "resource_id": allocation["resource_id"],
+                        "resource": allocation["name"],
+                        "action": "redeploy",
+                        "severity": "low",
+                        "detail": (
+                            f"{allocation['name']} is {utilisation}% committed, leaving {spare} "
+                            f"{allocation['unit'] or 'units'} spare. Bring critical work forward "
+                            f"onto it, or release it."
+                        ),
+                        "spare_units": spare,
+                        "utilisation_percent": utilisation,
+                    }
+                )
+
+        # A schedule with no float cannot absorb levelling, so say so.
+        if project_data.get("overdue_tasks"):
+            suggestions.append(
+                {
+                    "resource_id": None,
+                    "resource": "schedule",
+                    "action": "recover",
+                    "severity": "high",
+                    "detail": (
+                        f"{project_data['overdue_tasks']} activities are past their finish date. "
+                        f"Levelling cannot recover time that has already been lost — re-baseline "
+                        f"or compress the remaining critical path."
+                    ),
+                    "utilisation_percent": None,
+                }
+            )
+
+        return suggestions
+
+    def _calculate_efficiency_gains(
+        self, current_allocation: dict[str, Any], suggestions: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """What levelling would actually recover, in units and in spread."""
+        excess = sum(s.get("excess_units") or 0 for s in suggestions)
+        spare = sum(s.get("spare_units") or 0 for s in suggestions)
+
+        measured = [
+            a["utilisation_percent"]
+            for a in current_allocation["resources"]
+            if a["utilisation_percent"] is not None
+        ]
+        # Spread is the honest headline: perfect levelling drives it to zero.
+        spread = round(max(measured) - min(measured), 1) if len(measured) > 1 else 0.0
+
+        return {
+            "over_allocated_units": round(excess, 2),
+            "idle_units": round(spare, 2),
+            "absorbable_units": round(min(excess, spare), 2),
+            "utilisation_spread_percent": spread,
+            "mean_utilisation_percent": current_allocation["mean_utilisation_percent"],
+            "note": (
+                "Absorbable units are the over-allocation that idle capacity could take on "
+                "if the work can be moved. It is an upper bound: whether it can be moved "
+                "depends on float, which the CPM engine reports per activity."
+            ),
+        }
+
+    def _calculate_cost_impact(self, suggestions: list[dict[str, Any]]) -> dict[str, Any]:
+        """Price the over-allocation at each resource's own unit cost."""
+        priced, unpriced = 0.0, []
+
+        for suggestion in suggestions:
+            excess = suggestion.get("excess_units")
+            if not excess:
+                continue
+            resource = (
+                Resource.query.get(suggestion["resource_id"]) if suggestion["resource_id"] else None
+            )
+            if resource and resource.unit_cost:
+                priced += excess * resource.unit_cost
+            else:
+                unpriced.append(suggestion["resource"])
+
+        return {
+            "currency": "USD",
+            "over_allocation_cost": round(priced, 2),
+            "resources_without_a_unit_cost": sorted(set(unpriced)),
+            "basis": (
+                "Excess units multiplied by the resource's unit cost. Resources with no "
+                "unit cost recorded are listed rather than assumed to be free."
+            ),
+        }
+
+    def _prioritize_optimizations(self, suggestions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Worst over-allocation first, then idle capacity."""
+        rank = {"high": 0, "medium": 1, "low": 2}
+        ordered = sorted(
+            suggestions,
+            key=lambda s: (
+                rank.get(s.get("severity"), 3),
+                -(s.get("utilisation_percent") or 0),
+                s.get("resource") or "",
+            ),
+        )
+        return [{"priority": index + 1, **suggestion} for index, suggestion in enumerate(ordered)]
+
+    # ── company-wide insight ─────────────────────────────────────────────
+
+    def _analyze_trends(self, historical_data: dict[str, Any]) -> dict[str, Any]:
+        """Compare the recent half of the window against the earlier half.
+
+        A single number over ninety days is not a trend. Splitting the window
+        and comparing the halves is the least that earns the word.
+        """
+        periods = historical_data.get("periods") or []
+        if len(periods) < 2:
+            return {
+                "available": False,
+                "reason": "Not enough history in this window to compare two periods.",
+            }
+
+            # Earlier half against later half.
+        midpoint = len(periods) // 2
+        earlier, later = periods[:midpoint], periods[midpoint:]
+
+        def mean(bucket, key):
+            values = [b[key] for b in bucket if b.get(key) is not None]
+            return round(sum(values) / len(values), 2) if values else 0.0
+
+        started_then, started_now = mean(earlier, "started"), mean(later, "started")
+        finished_then, finished_now = mean(earlier, "completed"), mean(later, "completed")
+
+        def direction(then, now):
+            if then == now:
+                return "flat"
+            return "rising" if now > then else "falling"
+
+        return {
+            "available": True,
+            "buckets": len(periods),
+            "projects_started": {
+                "earlier_mean": started_then,
+                "recent_mean": started_now,
+                "direction": direction(started_then, started_now),
+            },
+            "projects_completed": {
+                "earlier_mean": finished_then,
+                "recent_mean": finished_now,
+                "direction": direction(finished_then, finished_now),
+            },
+            "throughput_change_percent": (
+                round((finished_now - finished_then) / finished_then * 100, 1)
+                if finished_then
+                else None
+            ),
+        }
+
+    def _predict_future_performance(self, historical_data: dict[str, Any]) -> dict[str, Any]:
+        """Extrapolate completions from observed throughput, with the caveat."""
+        periods = historical_data.get("periods") or []
+        completed = [p["completed"] for p in periods]
+        window = historical_data.get("analysis_period", 90)
+
+        if not completed or not any(completed):
+            return {
+                "available": False,
+                "reason": "No projects completed in this window, so there is no rate to project.",
+            }
+
+        per_bucket = sum(completed) / len(completed)
+        bucket_days = max(1, window // max(1, len(periods)))
+        per_day = per_bucket / bucket_days
+
+        return {
+            "available": True,
+            "basis": (
+                f"{sum(completed)} projects completed across {len(periods)} periods "
+                f"of about {bucket_days} days."
+            ),
+            "expected_completions_next_30_days": round(per_day * 30, 1),
+            "expected_completions_next_90_days": round(per_day * 90, 1),
+            "in_flight": historical_data.get("active", 0),
+            "caveat": (
+                "A straight-line projection of past throughput. It assumes the mix of work "
+                "and the size of the team stay as they were, and it says nothing about any "
+                "individual project — use the Monte Carlo simulation for that."
+            ),
+        }
+
+    def _industry_benchmarking(self, historical_data: dict[str, Any]) -> dict[str, Any]:
+        """Measure against DCMA 14-point, which is a published standard.
+
+        Deliberately not benchmarked against invented "industry averages".
+        The DCMA thresholds are real, citable and the same ones
+        core.schedule_health already applies, so the comparison means something.
+        """
+        scores = [
+            p["health_score"]
+            for p in historical_data.get("projects_detail", [])
+            if p.get("health_score") is not None
+        ]
+
+        if not scores:
+            return {
+                "available": False,
+                "reason": "No project in this window has a schedule that could be assessed.",
+            }
+
+        mean_score = round(sum(scores) / len(scores), 1)
+        # DCMA does not define a pass mark; these bands are this platform's own
+        # reading of the 14 checks and are labelled as such.
+        if mean_score >= 90:
+            band = "strong"
+        elif mean_score >= 75:
+            band = "acceptable"
+        elif mean_score >= 60:
+            band = "weak"
+        else:
+            band = "poor"
+
+        return {
+            "available": True,
+            "standard": "DCMA 14-Point Schedule Assessment",
+            "projects_assessed": len(scores),
+            "mean_health_score": mean_score,
+            "best": max(scores),
+            "worst": min(scores),
+            "band": band,
+            "note": (
+                "Scored against the DCMA 14-point checks this platform implements. "
+                "Checks that need a baseline or actuals are skipped and excluded from "
+                "the score rather than counted as failures."
+            ),
+        }
+
+    def _strategic_recommendations(
+        self, insights: dict[str, Any], trends: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Recommendations that name the number that triggered them."""
+        recommendations = []
+
+        completion_rate = insights.get("completion_rate_percent")
+        if completion_rate is not None and completion_rate < 50:
+            recommendations.append(
+                {
+                    "theme": "delivery",
+                    "priority": "high",
+                    "recommendation": (
+                        f"Only {completion_rate}% of projects started in this window have "
+                        f"finished. Review whether projects are being opened faster than they "
+                        f"can be delivered."
+                    ),
+                }
+            )
+
+        if trends.get("available") and trends["projects_completed"]["direction"] == "falling":
+            change = trends.get("throughput_change_percent")
+            recommendations.append(
+                {
+                    "theme": "throughput",
+                    "priority": "high",
+                    "recommendation": (
+                        "Completions are lower in the recent half of the window than the earlier "
+                        f"half{f' ({change}%)' if change is not None else ''}. Check for a "
+                        "resource constraint shared across projects."
+                    ),
+                }
+            )
+
+        weak = insights.get("projects_below_health_threshold") or []
+        if weak:
+            recommendations.append(
+                {
+                    "theme": "schedule quality",
+                    "priority": "medium",
+                    "recommendation": (
+                        f"{len(weak)} project(s) score below 75 on the DCMA assessment: "
+                        f"{', '.join(weak[:5])}. Missing logic and negative float make every "
+                        f"other forecast unreliable, so fix these first."
+                    ),
+                }
+            )
+
+        over_budget = insights.get("projects_over_budget") or []
+        if over_budget:
+            recommendations.append(
+                {
+                    "theme": "cost",
+                    "priority": "high",
+                    "recommendation": (
+                        f"{len(over_budget)} project(s) have spent more than their approved "
+                        f"budget: {', '.join(over_budget[:5])}."
+                    ),
+                }
+            )
+
+        if not recommendations:
+            recommendations.append(
+                {
+                    "theme": "steady state",
+                    "priority": "info",
+                    "recommendation": (
+                        "Nothing in this window crosses a threshold worth acting on. "
+                        "Completion rate, throughput trend, schedule health and budget are "
+                        "all within their bands."
+                    ),
+                }
+            )
+
+        return recommendations
+
 
 # Global instance
 azure_ai_analytics = AzureAIPredictiveAnalytics()
@@ -711,46 +1228,12 @@ def company_insights():
         return jsonify({"error": "Insights generation failed"}), 500
 
 
-# Additional helper methods for the analytics class
-def _gather_historical_data(self, company_id: int, days_back: int) -> dict[str, Any]:
-    """Gather historical data for company insights"""
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days_back)
-
-    projects = Project.query.filter(
-        Project.company_id == company_id, Project.created_at >= start_date
-    ).all()
-
-    return {
-        "projects": len(projects),
-        "completed": len([p for p in projects if p.status == "completed"]),
-        "active": len([p for p in projects if p.status == "active"]),
-        "total_value": sum(p.budget for p in projects if p.budget),
-        "analysis_period": days_back,
-    }
-
-
-def _ai_company_insights(self, historical_data: dict[str, Any]) -> dict[str, Any]:
-    """Generate AI insights from historical data"""
-    completion_rate = (historical_data["completed"] / max(1, historical_data["projects"])) * 100
-
-    insights = {
-        "performance_summary": f"Completed {completion_rate:.1f}% of projects in the analysis period",
-        "key_trends": [
-            "Project completion rates are stable",
-            "Resource utilization could be optimized",
-            "Budget adherence is within acceptable range",
-        ],
-        "areas_for_improvement": [
-            "Schedule predictability",
-            "Resource allocation efficiency",
-            "Risk mitigation processes",
-        ],
-    }
-
-    return insights
-
-
-# Add these methods to the class
-AzureAIPredictiveAnalytics._gather_historical_data = _gather_historical_data
-AzureAIPredictiveAnalytics._ai_company_insights = _ai_company_insights
+# These two were attached to the class at import time rather than defined in
+# it. That worked, but it hid them from every static reader — which is why an
+# AST check reported them as missing methods when they were not. They are
+# ordinary methods now, defined above with the other nine.
+#
+# Both also returned invented text: _ai_company_insights reported "Project
+# completion rates are stable" and "Resource utilization could be optimized"
+# whatever the data said, on every company, forever. What they return now is
+# measured.

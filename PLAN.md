@@ -286,7 +286,10 @@ not exist. `tests/test_templates.py` now asserts every rendered template resolve
 7. **The remaining facade.** `reports/executive_dashboard.py` generates its revenue trends
    and geographic breakdown. Those payloads now carry a `simulated` flag so the UI can
    label them, but generated figures in an executive dashboard should be built or removed.
-   Seven admin, Azure and project-template pages still render templates that do not exist.
+   It is now the only one left: the nine missing pages are built, the eleven analytics
+   helpers are implemented, and `admin/system_status.html` no longer reports a hardcoded
+   "245ms average response time, 127 requests per minute, 0.2% error rate" — it measures
+   what it can and omits request rate rather than inventing it.
 8. **Licensing — resolved.** The repository is now [MIT licensed](LICENSE), copyright
    Matthew M. Emma. It previously described itself as "proprietary software developed for
    Balfour Beatty US. All rights reserved." while carrying no `LICENSE` file, so under

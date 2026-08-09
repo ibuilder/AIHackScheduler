@@ -18,17 +18,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_ROOT = REPO_ROOT / "templates"
 
 # Pages a view renders that have not been written yet. Each 500s if requested.
-KNOWN_MISSING = {
-    "admin/audit_logs.html",
-    "admin/company_settings.html",
-    "admin/edit_user.html",
-    "admin/system_status.html",
-    "azure/configure.html",
-    "azure/dashboard.html",
-    "projects/my_templates.html",
-    "projects/template_preview.html",
-    "reports/project_report.html",
-}
+# Every template a view names now exists. This set is deliberately empty:
+# a new view rendering a template nobody wrote fails the test below rather
+# than returning 500 to whoever clicks the link first.
+KNOWN_MISSING: set[str] = set()
 
 SKIP_DIRS = {
     ".git",

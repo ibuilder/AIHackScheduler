@@ -184,9 +184,15 @@ def test_project_number_is_unique_per_company_not_globally(fresh_db):
 
 @pytest.mark.slow
 def test_the_downgrade_reverses_cleanly(fresh_db):
+    """Downgrade to the baseline by name, not by one step.
+
+    A bare `db downgrade` moves back a single revision, so this asserted the
+    rebuild tables were gone only while 0002 happened to be the head. Naming
+    the target keeps the test meaningful as migrations are added.
+    """
     url, _ = fresh_db
     _run_flask("db", "upgrade", database_url=url)
-    _run_flask("db", "downgrade", database_url=url)
+    _run_flask("db", "downgrade", "0001_baseline", database_url=url)
 
     tables = set(inspect(create_engine(url)).get_table_names())
     assert not ({"schedule_baselines", "equipment_usage_logs", "maintenance_records"} & tables)

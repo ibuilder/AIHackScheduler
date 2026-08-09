@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Audit log - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3 mb-0"><i class="fas fa-clipboard-list me-2"></i>Audit log</h1>
+            <p class="text-muted mb-0">
+                Every recorded action for your company, newest first.
+                {% if logs.total is defined %}{{ logs.total }} entries.{% endif %}
+            </p>
+        </div>
+    </div>
+
+    {# `logs` is a Flask-SQLAlchemy Pagination, not a list -- iterate logs.items. #}
+    {% if not logs.items %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-clipboard fa-2x text-muted mb-3"></i>
+            <p class="mb-0 text-muted">Nothing has been recorded yet.</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">When</th>
+                        <th scope="col">Action</th>
+                        <th scope="col">Resource</th>
+                        <th scope="col">User</th>
+                        <th scope="col">Source</th>
+                        <th scope="col">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in logs.items %}
+                    <tr>
+                        <td class="text-nowrap">
+                            {% if entry.timestamp %}
+                            <span title="{{ entry.timestamp }}">{{ entry.timestamp.strftime('%d %b %Y, %H:%M') }}</span>
+                            {% else %}
+                            <span class="text-muted">unknown</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ entry.action }}</code></td>
+                        <td>
+                            {% if entry.resource_type %}
+                            {{ entry.resource_type }}{% if entry.resource_id %} #{{ entry.resource_id }}{% endif %}
+                            {% else %}
+                            <span class="text-muted">&mdash;</span>
+                            {% endif %}
+                        </td>
+                        <td>{% if entry.user_id %}#{{ entry.user_id }}{% else %}<span class="text-muted">system</span>{% endif %}</td>
+                        <td class="font-monospace small">{{ entry.ip_address or '—' }}</td>
+                        <td class="small text-break" style="max-width: 24rem;">
+                            {% if entry.details %}{{ entry.details }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if logs.pages and logs.pages > 1 %}
+    <nav class="mt-4" aria-label="Audit log pages">
+        <ul class="pagination justify-content-center">
+            <li class="page-item {% if not logs.has_prev %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{% if logs.has_prev %}{{ url_for('user_management.audit_logs', page=logs.prev_num) }}{% else %}#{% endif %}">
+                    Previous
+                </a>
+            </li>
+            {% for page_number in logs.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
+                {% if page_number %}
+                <li class="page-item {% if page_number == logs.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('user_management.audit_logs', page=page_number) }}">{{ page_number }}</a>
+                </li>
+                {% else %}
+                <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                {% endif %}
+            {% endfor %}
+            <li class="page-item {% if not logs.has_next %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{% if logs.has_next %}{{ url_for('user_management.audit_logs', page=logs.next_num) }}{% else %}#{% endif %}">
+                    Next
+                </a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

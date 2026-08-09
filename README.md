@@ -5,7 +5,7 @@
 [![CI](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/AIHackScheduler/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-284%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-327%20passing-brightgreen)](tests/)
 
 Most schedule tools assume the schedule they are given is sound. Most are not. BBSchedule
 computes the critical path properly, then grades the schedule against the
@@ -399,9 +399,19 @@ flag so the UI can label them, but they should be built or removed.
 no webhook reconciliation, no PCI scope. The README previously advertised "Stripe
 integration in progress" against no implementation of any kind.
 
-**Known gaps, tested as gaps** — seven admin, Azure and project-template pages render
-templates that were never written, so those routes return 500. `tests/test_templates.py`
-holds the list and fails if it grows.
+**Every page renders** — the nine admin, Azure, project-template and reporting pages that
+rendered templates nobody had written are built, and the two analytics endpoints whose
+helpers did not exist are implemented. `tests/test_all_routes.py` walks the URL map and
+requests all 90 GET routes signed in; 83 return 200, none return a server error. It walks
+the map rather than a list, so a route added tomorrow is covered the day it appears.
+
+**Resource optimisation and portfolio insight** — `/api/ai/resource-optimization/<id>`
+reports utilisation per resource, names what is over-allocated and by how many units,
+prices the excess at each resource's own unit cost, and ranks the moves.
+`/api/ai/company-insights` reports completion rate, spend against approved budget,
+throughput trend across six periods, and DCMA health per project. Both are deterministic:
+the same data gives the same answer, which is the property a schedule review needs.
+Azure OpenAI is not required for either.
 
 The near-term priorities, in order:
 
