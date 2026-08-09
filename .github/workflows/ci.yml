@@ -31,7 +31,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          # Bounded for the same reason as ruff: pytest 9 changed plugin hook
+          # handling, and an unbounded install would apply that on its own
+          # schedule to a build nobody touched.
+          pip install "pytest>=8,<10" "pytest-cov>=5,<8"
 
       - name: Run tests
         run: pytest --cov=core --cov=services --cov-report=term-missing

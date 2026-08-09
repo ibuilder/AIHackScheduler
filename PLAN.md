@@ -193,6 +193,14 @@ every machine on every dashboard. The demo fleet reads 6.9% to 100% across six m
 status, voids in error while keeping the row, and buckets aged receivables. This is
 bookkeeping, not card processing — see item 4 below.
 
+**Dependency drift.** Every runtime dependency was declared with a bare `>=`, so any
+future release — including a new major — could land in CI with no change to the repository.
+That is not hypothetical: `ruff` broke the lint job on its own release schedule, and
+`flask-limiter` had already crossed from 3.x to 4.x without anyone noticing, working by
+luck rather than by contract. Every entry now has an upper bound, the test and lint tooling
+is pinned, and Dependabot proposes raising the bounds weekly so upgrades arrive as pull
+requests that run the suite rather than as surprises.
+
 **Migrations.** The schema changed six times during the rebuild with nothing to apply
 those changes to an existing database — `create_all` only ever adds missing tables. There
 are now two migrations: `0001_baseline` recreating the schema exactly as it stood at the

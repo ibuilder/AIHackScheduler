@@ -1,0 +1,41 @@
+# Dependency updates arrive as pull requests that run CI, rather than landing
+# silently in the next build.
+#
+# The upper bounds in requirements.txt stop a new major release breaking a
+# build nobody touched. That protection is only useful if something then
+# proposes raising them — otherwise the bounds simply freeze the project.
+# This is that something.
+
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine patch and minor bumps; they either pass CI together
+      # or the group is small enough to bisect.
+      routine:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]
+    labels: ["dependencies"]
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: docker
+    directory: /deployment
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: ci

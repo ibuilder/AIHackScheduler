@@ -251,6 +251,18 @@ ruff format .             # format
 CI runs tests on Python 3.11, 3.12 and 3.13, lints, builds the wheel and the Docker image,
 checks migrations match the models, and boots and seeds the application on every push.
 
+### Keeping CI honest
+
+Every dependency carries an upper bound, and the test and lint tooling is pinned. Without
+that, a release on someone else's schedule fails a build nobody touched — which had already
+started happening: `ruff` reformatted Markdown in a new minor and broke lint, and
+`flask-limiter` had drifted from 3.x to 4.x unnoticed, working by luck rather than by
+contract.
+
+Bounds alone would just freeze the project, so Dependabot proposes raising them weekly.
+Upgrades then arrive as pull requests that run the full suite, rather than landing silently
+in the next build.
+
 ---
 
 ## Deployment
