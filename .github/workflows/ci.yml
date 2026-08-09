@@ -83,11 +83,12 @@ jobs:
           EOF
 
       # The MPXJ bridge needs a JVM, which is why it had never run anywhere.
-      # GitHub's runners have one.
-      - name: Exercise the MPXJ bridge
+      # GitHub's runners have one. -s so the log records what a real binary
+      # .mpp actually yielded, rather than only reporting that it did.
+      - name: Exercise the MPXJ bridge against a real binary .mpp
         run: |
           java -version
-          pytest tests/test_mpp.py -m mpp -v
+          pytest tests/test_mpp.py -m mpp -v -s
 
   lint:
     name: Lint
