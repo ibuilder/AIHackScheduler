@@ -68,6 +68,9 @@ dev = [
     # on someone else's schedule must not fail a build nobody touched.
     "pytest>=8.0,<10",
     "pytest-cov>=5.0,<8",
+    # tests/test_deployment.py reads the CI workflow to check that the Python
+    # version the image ships is a version some test job actually runs.
+    "pyyaml>=6.0,<8",
     # Pinned: a formatter that floats breaks CI on its own release schedule,
     # with no change to this codebase. Bump deliberately.
     "ruff==0.16.2",
@@ -104,6 +107,10 @@ markers = [
     # Migration tests shell out to the Flask CLI and build real databases, so
     # they run in seconds rather than milliseconds. Skip with -m "not slow".
     "slow: spawns a subprocess and builds a database",
+    # Needs the mpp extra and a JVM. Skipped automatically without them, so a
+    # normal `pytest` run is unaffected — but CI installs both and runs them,
+    # because otherwise the MPXJ bridge is code nobody has ever executed.
+    "mpp: needs MPXJ and a JVM",
 ]
 filterwarnings = ["error::DeprecationWarning:core.*"]
 
