@@ -201,6 +201,26 @@ luck rather than by contract. Every entry now has an upper bound, the test and l
 is pinned, and Dependabot proposes raising the bounds weekly so upgrades arrive as pull
 requests that run the suite rather than as surprises.
 
+Its first run opened seven, and two of them found defects instead of needing them. The
+Dockerfile named its Python version three times — twice on `FROM` lines and once inside
+`COPY --from=builder /usr/local/lib/python3.11/site-packages`, thirty lines below — so any
+base image bump broke the build on a path nobody thought of as a version declaration.
+Dependencies now install into a virtualenv at `/opt/venv`.
+
+The bigger find was that green did not mean tested. None of the optional packages appear in
+`requirements.txt`, so proposals widening the `redis`, `openai`, `stripe` and `mpxj` bounds
+passed all eight jobs without importing a line of the affected code. The `extras` job now
+installs every extra and imports them; `tests/test_deployment.py` separately refuses a base
+image whose Python is not in the test matrix.
+
+Installing the `mpp` extra ran the MPXJ bridge for the first time, and it did not work:
+`read_mpp` called `mpxj.initialize()`, which does not exist. Beneath that, relationship types
+were looked up on `str(relation.getType())` with a `.get(..., FS)` default — and since MPXJ
+overrides `toString()` to a display form, every relationship in every `.mpp` import silently
+became Finish-Start. Both had been committed unexecuted because no machine here has a JVM.
+`tests/test_mpp.py` closes that by exploiting MPXJ's ability to read MSPDI XML: the same file
+goes through MPXJ and through this project's own reader, and the two are compared.
+
 **Migrations.** The schema changed six times during the rebuild with nothing to apply
 those changes to an existing database — `create_all` only ever adds missing tables. There
 are now two migrations: `0001_baseline` recreating the schema exactly as it stood at the
