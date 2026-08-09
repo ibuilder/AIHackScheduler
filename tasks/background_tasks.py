@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime
 
+from extensions import db
 from services.azure_ai import AzureAIService
 from services.fabric_service import FabricService
 from services.foundry_service import FoundryService
@@ -20,7 +21,7 @@ def process_project_file(self, project_id, file_path, file_type):
         from extensions import db
         from models import Project, Task
 
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if not project:
             raise Exception(f"Project {project_id} not found")
 
@@ -81,7 +82,7 @@ def sync_azure_services(self, project_id, services=None):
         from extensions import db
         from models import AzureIntegration, Project
 
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if not project:
             raise Exception(f"Project {project_id} not found")
 
@@ -139,7 +140,7 @@ def generate_project_report(project_id, report_type="comprehensive"):
     try:
         from models import Project, Resource, Task
 
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if not project:
             raise Exception(f"Project {project_id} not found")
 
@@ -184,7 +185,7 @@ def send_notification(user_id, notification_type, data):
     try:
         from models import User
 
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return {"status": "failed", "error": "User not found"}
 

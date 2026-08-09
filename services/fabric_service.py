@@ -4,6 +4,7 @@ from typing import Any
 
 import requests
 
+from extensions import db
 from models import Project, Resource, Task
 
 
@@ -69,7 +70,7 @@ class FabricService:
 
     def sync_project_data(self, project_id: int) -> dict[str, Any]:
         """Sync project data to Microsoft Fabric data lake."""
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         tasks = Task.query.filter_by(project_id=project_id).all()
         resources = Resource.query.filter_by(project_id=project_id).all()
 

@@ -1,6 +1,15 @@
 import json
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from extensions import db
@@ -8,6 +17,8 @@ from models import AzureIntegration, Project
 from services.azure_ai import AzureAIService
 from services.fabric_service import FabricService
 from services.foundry_service import FoundryService
+
+SERVICE_TYPES = {"ai", "fabric", "foundry"}
 
 azure_bp = Blueprint("azure", __name__)
 
@@ -121,22 +132,46 @@ def configure_integration(project_id):
         return redirect(url_for("projects.list_projects"))
 
     if request.method == "POST":
-        service_type = request.form.get("service_type")
+        # Validate before writing. service_type is NOT NULL, so a POST without
+        # it inserted AzureIntegration(service_type=None) and raised
+        # IntegrityError -- a 500, and a poisoned session for whatever ran next
+        # in the same request. `configuration` went straight into json.loads,
+        # so any malformed value raised JSONDecodeError the same way.
+        service_type = (request.form.get("service_type") or "").strip()
+        if service_type not in SERVICE_TYPES:
+            flash(f"Choose a service: {', '.join(sorted(SERVICE_TYPES))}.", "error")
+            return redirect(url_for("azure.configure_integration", project_id=project_id))
 
-        # Update or create integration
-        integration = AzureIntegration.query.filter_by(
-            project_id=project_id, service_type=service_type
-        ).first()
+        raw_configuration = request.form.get("configuration") or "{}"
+        try:
+            configuration = json.loads(raw_configuration)
+        except ValueError:
+            flash("Configuration must be valid JSON.", "error")
+            return redirect(url_for("azure.configure_integration", project_id=project_id))
+        if not isinstance(configuration, dict):
+            flash("Configuration must be a JSON object.", "error")
+            return redirect(url_for("azure.configure_integration", project_id=project_id))
 
-        if not integration:
-            integration = AzureIntegration(project_id=project_id, service_type=service_type)
-            db.session.add(integration)
+        try:
+            integration = AzureIntegration.query.filter_by(
+                project_id=project_id, service_type=service_type
+            ).first()
 
-        integration.endpoint_url = request.form.get("endpoint_url")
-        integration.workspace_id = request.form.get("workspace_id")
-        integration.configuration = json.loads(request.form.get("configuration", "{}"))
+            if not integration:
+                integration = AzureIntegration(project_id=project_id, service_type=service_type)
+                db.session.add(integration)
 
-        db.session.commit()
+            integration.endpoint_url = request.form.get("endpoint_url")
+            integration.workspace_id = request.form.get("workspace_id")
+            integration.configuration = configuration
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Azure integration configuration failed")
+            flash("Could not save the integration. Please try again.", "error")
+            return redirect(url_for("azure.configure_integration", project_id=project_id))
+
         flash("Integration configured successfully", "success")
         return redirect(url_for("azure.dashboard"))
 

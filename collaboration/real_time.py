@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
 from audit.audit_logger import audit_logger
+from extensions import db
 from models import Project, User
 
 collaboration_bp = Blueprint("collaboration", __name__)
@@ -83,7 +84,7 @@ class CollaborationManager:
         # Format activities for display
         formatted_activities = []
         for activity in activities[-10:]:  # Get last 10
-            user = User.query.get(activity["user_id"])
+            user = db.session.get(User, activity["user_id"])
             username = user.username if user else "Unknown User"
 
             if activity["type"] == "message":

@@ -9,6 +9,7 @@ from core.cpm import (
     calculate_cpm,
     longest_path,
 )
+from extensions import db
 from models import Project, Resource, ResourceAssignment, Task, TaskDependency
 
 
@@ -34,7 +35,7 @@ class ScheduleOptimizer:
         if optimization_type not in self.optimization_methods:
             raise ValueError(f"Unsupported optimization type: {optimization_type}")
 
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if project is None:
             return {"success": False, "error": f"Project {project_id} not found"}
 

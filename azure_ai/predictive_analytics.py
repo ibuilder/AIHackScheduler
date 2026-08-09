@@ -929,7 +929,9 @@ class AzureAIPredictiveAnalytics:
             if not excess:
                 continue
             resource = (
-                Resource.query.get(suggestion["resource_id"]) if suggestion["resource_id"] else None
+                db.session.get(Resource, suggestion["resource_id"])
+                if suggestion["resource_id"]
+                else None
             )
             if resource and resource.unit_cost:
                 priced += excess * resource.unit_cost

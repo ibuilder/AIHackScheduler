@@ -92,7 +92,7 @@ class AzureAIService:
 
     def analyze_project_schedule(self, project_id: int) -> dict[str, Any]:
         """Interpret a computed schedule: risks, bottlenecks, recommendations."""
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if project is None:
             return {"success": False, "error": f"Project {project_id} not found"}
 
@@ -162,7 +162,7 @@ unreliable as a result."""
 
     def optimize_schedule(self, project_id: int, parameters: dict[str, Any]) -> dict[str, Any]:
         """Propose sequence and duration changes against a computed baseline."""
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if project is None:
             return {"success": False, "error": f"Project {project_id} not found"}
 
@@ -239,7 +239,7 @@ Return JSON with these keys:
 
     def predict_completion_date(self, project_id: int) -> dict[str, Any]:
         """Forecast completion from measured progress against the CPM baseline."""
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         if project is None:
             return {"success": False, "error": f"Project {project_id} not found"}
 

@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 
+from extensions import db
 from models import Project, Task, TaskStatus
 
 
@@ -30,7 +31,7 @@ class FoundryService:
 
     def predict_project_outcomes(self, project_id: int, prediction_type: str) -> dict[str, Any]:
         """Predict project outcomes using Azure AI Foundry."""
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         tasks = Task.query.filter_by(project_id=project_id).all()
 
         # Prepare historical data for prediction
@@ -269,7 +270,7 @@ class FoundryService:
 
     def generate_schedule_insights(self, project_id: int) -> dict[str, Any]:
         """Generate comprehensive schedule insights using Foundry."""
-        project = Project.query.get(project_id)
+        project = db.session.get(Project, project_id)
         tasks = Task.query.filter_by(project_id=project_id).all()
 
         insights_request = {
