@@ -1,16 +1,20 @@
 """Calls to methods that do not exist.
 
 ``AzureAIPredictiveAnalytics.optimize_resource_allocation`` and
-``generate_project_insights`` each call a chain of private helpers, eleven of
-which were never written — and two of which sit at module scope taking ``self``,
-having been dedented out of the class at some point. Both public methods raised
-``AttributeError`` on their first line of real work, and the blueprint caught it
-and returned a generic 500, so the endpoints looked merely unlucky rather than
-impossible.
+``generate_project_insights`` each called a chain of private helpers, nine of
+which were never written. Both raised ``AttributeError`` on their first line of
+real work, and the blueprint caught it and returned a generic 500, so the
+endpoints looked merely unlucky rather than impossible. They are implemented
+now; this check is what stops the shape recurring.
 
 Python does not resolve attributes until the line runs, so nothing but reaching
 the line reveals this. Reaching the line is exactly what does not happen for
 code with no test and no user. This walks the AST instead.
+
+The one thing it cannot see is a method attached at import time
+(``SomeClass._helper = _helper``). Two of the original eleven were bound that
+way and were reported as missing when they were not — so treat a finding as a
+lead, and confirm with ``hasattr`` before recording it below.
 """
 
 import ast
@@ -40,26 +44,15 @@ SKIP_DIRS = {
     "htmlcov",
 }
 
-# The eleven helpers behind optimize_resource_allocation and
-# generate_project_insights. Implementing them means designing a resource
-# optimiser and a company analytics engine, which is a feature and not a fix —
-# recorded here so the gap is explicit and so no *new* one can be added
-# unnoticed. The two marked below exist at module scope taking `self`.
-KNOWN_MISSING = {
-    ("azure_ai/predictive_analytics.py", "AzureAIPredictiveAnalytics"): {
-        "_ai_company_insights",  # at module scope, takes self
-        "_ai_resource_optimization",
-        "_analyze_current_resources",
-        "_analyze_trends",
-        "_calculate_cost_impact",
-        "_calculate_efficiency_gains",
-        "_gather_historical_data",  # at module scope, takes self
-        "_industry_benchmarking",
-        "_predict_future_performance",
-        "_prioritize_optimizations",
-        "_strategic_recommendations",
-    },
-}
+# Deliberately empty. The eleven helpers behind
+# optimize_resource_allocation and generate_project_insights are implemented,
+# so any entry here now would be a fresh gap rather than a recorded one.
+#
+# Two of the eleven were never missing: they were attached to the class at
+# import time with `AzureAIPredictiveAnalytics._x = _x`, which no AST can see.
+# That is a false positive this check cannot avoid in general -- so if an entry
+# ever needs adding, confirm with hasattr() before believing it.
+KNOWN_MISSING: dict[tuple[str, str], set[str]] = {}
 
 
 def _python_files():

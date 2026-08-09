@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}System status - BBSchedule Platform{% endblock %}
+
+{% macro state_badge(value) -%}
+    {% if value in ('healthy', 'configured') %}
+        <span class="badge bg-success">{{ value.replace('_', ' ')|title }}</span>
+    {% elif value in ('not_configured', 'pending_setup') %}
+        <span class="badge bg-secondary">{{ value.replace('_', ' ')|title }}</span>
+    {% elif value == 'unhealthy' %}
+        <span class="badge bg-danger">Unhealthy</span>
+    {% else %}
+        <span class="badge bg-warning text-dark">{{ value.replace('_', ' ')|title }}</span>
+    {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3 mb-0"><i class="fas fa-heart-pulse me-2"></i>System status</h1>
+            <p class="text-muted mb-0">
+                Measured when this page loaded{% if status.checked_at %}, at {{ status.checked_at }}{% endif %}.
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-uppercase text-muted mb-3">Database</h2>
+                    <p class="mb-2">{{ state_badge(status.database.status) }}</p>
+                    {% if status.database.response_time_ms is defined %}
+                    <p class="display-6 mb-0">{{ status.database.response_time_ms }}<small class="fs-6 text-muted"> ms</small></p>
+                    <p class="text-muted small mb-0">Round trip for <code>SELECT 1</code>.</p>
+                    {% else %}
+                    <p class="text-muted small mb-0">The query did not complete. See the application log.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-uppercase text-muted mb-3">Cache</h2>
+                    <p class="mb-2">{{ state_badge(status.cache.status) }}</p>
+                    <p class="text-muted small mb-0">
+                        Backend: <code>{{ status.cache.backend or 'unknown' }}</code>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-uppercase text-muted mb-3">Background jobs</h2>
+                    <p class="mb-2">{{ state_badge(status.background_jobs.status) }}</p>
+                    <p class="text-muted small mb-0">
+                        {% if status.background_jobs.broker %}
+                        Broker: <code>{{ status.background_jobs.broker }}</code>
+                        {% else %}
+                        No broker configured, so Celery workers are not running.
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-uppercase text-muted mb-3">Integrations</h2>
+                    <table class="table table-sm align-middle mb-0">
+                        <tbody>
+                            {% for name, state in status.integrations.items() %}
+                            <tr>
+                                <td>{{ name.replace('_', ' ')|title }}</td>
+                                <td class="text-end">{{ state_badge(state) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <p class="text-muted small mb-0 mt-3">
+                        Configured means the credentials are present in the environment.
+                        Every integration is optional; scheduling runs without them.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h6 text-uppercase text-muted mb-3">This process</h2>
+                    {% if status.process %}
+                    <table class="table table-sm align-middle mb-0">
+                        <tbody>
+                            <tr><td>PID</td><td class="text-end font-monospace">{{ status.process.pid }}</td></tr>
+                            <tr>
+                                <td>Uptime</td>
+                                <td class="text-end">{{ status.process.uptime_seconds }} s</td>
+                            </tr>
+                            <tr><td>Resident memory</td><td class="text-end">{{ status.process.memory_mb }} MB</td></tr>
+                            <tr><td>System CPU</td><td class="text-end">{{ status.process.cpu_percent }} %</td></tr>
+                            <tr><td>System memory</td><td class="text-end">{{ status.process.system_memory_percent }} %</td></tr>
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted mb-0">Process metrics unavailable.</p>
+                    {% endif %}
+
+                    <hr>
+                    <p class="mb-0 text-muted small">
+                        <strong>{{ status.records.users }}</strong> users and
+                        <strong>{{ status.records.projects }}</strong> projects in your company.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-light border mt-4 mb-0 small">
+        <i class="fas fa-circle-info me-1"></i>
+        Request rate and error rate are deliberately not shown here: nothing in the
+        application records them, and inventing a figure is worse than omitting it.
+        Scrape <code>{{ url_for('health.metrics_endpoint') }}</code> with Prometheus for those.
+    </div>
+</div>
+{% endblock %}

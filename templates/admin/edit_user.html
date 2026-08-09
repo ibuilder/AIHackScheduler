@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ user.username }} - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a href="{{ url_for('user_management.manage_users') }}">Users</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ user.username }}</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-0"><i class="fas fa-user-pen me-2"></i>Edit user</h1>
+            <p class="text-muted mb-0">
+                Joined {{ user.created_at.strftime('%d %b %Y') if user.created_at else 'unknown' }}
+                &middot;
+                Last signed in
+                {% if user.last_login %}{{ user.last_login.strftime('%d %b %Y, %H:%M') }}{% else %}never{% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    {# The view reads first_name, last_name, email, role, is_active
+                       and an optional password. Field names must match exactly or
+                       the value is silently read as None and the record is wiped. #}
+                    <form method="post" novalidate>
+                        {% if csrf_token is defined %}
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% endif %}
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="first_name" class="form-label">First name</label>
+                                <input type="text" class="form-control" id="first_name" name="first_name"
+                                       value="{{ user.first_name or '' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="last_name" class="form-label">Last name</label>
+                                <input type="text" class="form-control" id="last_name" name="last_name"
+                                       value="{{ user.last_name or '' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username"
+                                       value="{{ user.username }}" disabled>
+                                <div class="form-text">Usernames cannot be changed.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email"
+                                       value="{{ user.email or '' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="role" class="form-label">Role</label>
+                                <select class="form-select" id="role" name="role">
+                                    {# The view does UserRole[value], so the option value must be
+                                       the enum member NAME, not its lowercase value. #}
+                                    {% for role in user.role.__class__ %}
+                                    <option value="{{ role.name }}" {% if user.role == role %}selected{% endif %}>
+                                        {{ role.value.replace('_', ' ')|title }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="password" class="form-label">New password</label>
+                                <input type="password" class="form-control" id="password" name="password"
+                                       autocomplete="new-password" placeholder="Leave blank to keep current">
+                                <div class="form-text">Only set if you intend to change it.</div>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch"
+                                           id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_active">
+                                        Account is active
+                                    </label>
+                                </div>
+                                <div class="form-text">
+                                    An inactive user keeps their history but cannot sign in.
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-floppy-disk me-2"></i>Save changes
+                            </button>
+                            <a href="{{ url_for('user_management.manage_users') }}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h6 text-uppercase text-muted mb-3">Account status</h2>
+                    <p class="mb-3">
+                        {% if user.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                        <span class="badge bg-info text-dark">{{ user.role.value.replace('_', ' ')|title }}</span>
+                    </p>
+                    {% if user.is_active %}
+                    <form method="post" action="{{ url_for('user_management.deactivate_user', user_id=user.id) }}">
+                        {% if csrf_token is defined %}
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% endif %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                            <i class="fas fa-user-slash me-2"></i>Deactivate account
+                        </button>
+                    </form>
+                    {% else %}
+                    <form method="post" action="{{ url_for('user_management.activate_user', user_id=user.id) }}">
+                        {% if csrf_token is defined %}
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% endif %}
+                        <button type="submit" class="btn btn-outline-success btn-sm w-100">
+                            <i class="fas fa-user-check me-2"></i>Reactivate account
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

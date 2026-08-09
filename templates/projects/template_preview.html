@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}{{ template.name }} template - BBSchedule Platform{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item">
+                        <a href="{{ url_for('project_templates.template_gallery') }}">Templates</a>
+                    </li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ template.name }}</li>
+                </ol>
+            </nav>
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h1 class="h3 mb-1"><i class="fas fa-layer-group me-2"></i>{{ template.name }}</h1>
+                    <p class="text-muted mb-0">{{ template.description }}</p>
+                </div>
+                <a href="{{ url_for('project_templates.create_from_template', template_id=template_id) }}"
+                   class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Create a project from this
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if metrics %}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <p class="display-6 mb-0">{{ metrics.total_tasks }}</p>
+                    <p class="text-muted small mb-0">Activities</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <p class="display-6 mb-0">{{ metrics.estimated_duration_weeks }}</p>
+                    <p class="text-muted small mb-0">Weeks, end to end</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <p class="display-6 mb-0">{{ metrics.total_duration_days }}</p>
+                    <p class="text-muted small mb-0">Activity-days of work</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <p class="display-6 mb-0">{{ metrics.critical_tasks }}</p>
+                    <p class="text-muted small mb-0">High priority</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-light border small">
+        <i class="fas fa-circle-info me-1"></i>
+        These are the template's own figures &mdash; the sum of activity durations and the
+        span between the earliest start and latest finish. The real critical path is
+        computed once the project exists and the dependencies are scheduled.
+    </div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent">
+            <h2 class="h6 mb-0">Activities</h2>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Activity</th>
+                        <th scope="col">Phase</th>
+                        <th scope="col" class="text-end">Duration</th>
+                        <th scope="col">Priority</th>
+                        <th scope="col">Depends on</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in template.tasks %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td>
+                            <div>{{ task.name }}</div>
+                            {% if task.description %}
+                            <div class="small text-muted">{{ task.description }}</div>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-light text-dark">{{ task.phase or 'General' }}</span></td>
+                        <td class="text-end text-nowrap">{{ task.duration }} d</td>
+                        <td>
+                            {% if task.priority == 'HIGH' %}
+                            <span class="badge bg-danger">High</span>
+                            {% elif task.priority == 'LOW' %}
+                            <span class="badge bg-secondary">Low</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Medium</span>
+                            {% endif %}
+                        </td>
+                        <td class="small">
+                            {% if task.dependencies %}
+                            {{ task.dependencies|join(', ') }}
+                            {% else %}
+                            <span class="text-muted">&mdash;</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if metrics and metrics.phases %}
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-body">
+            <h2 class="h6 text-uppercase text-muted mb-3">Phases</h2>
+            {% for phase in metrics.phases %}
+            <span class="badge bg-light text-dark border me-1 mb-1">{{ phase }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

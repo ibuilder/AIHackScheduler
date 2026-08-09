@@ -1,12 +1,22 @@
 import logging
+from datetime import datetime, timezone
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required
 from werkzeug.security import generate_password_hash
 
 from audit.audit_logger import audit_logger
 from extensions import db
-from models import AuditLog, Company, User, UserRole
+from models import AuditLog, Company, Project, User, UserRole
 
 admin_bp = Blueprint("user_management", __name__)
 
@@ -257,21 +267,93 @@ def system_status():
         flash("Access denied. Admin privileges required.", "error")
         return redirect(url_for("main.dashboard"))
 
-    # Get system health information
-    status_data = {
-        "database": "healthy",
-        "cache": "healthy",
-        "background_jobs": "healthy",
-        "integrations": {
-            "power_bi": "pending_setup",
-            "azure_ai": "not_configured",
-            "fabric": "not_configured",
-        },
-        "performance": {
-            "avg_response_time": "245ms",
-            "requests_per_minute": 127,
-            "error_rate": "0.2%",
-        },
+    return render_template("admin/system_status.html", status=collect_system_status())
+
+
+def collect_system_status() -> dict:
+    """Measure what the platform can actually observe about itself.
+
+    This used to return a literal dict: database "healthy", cache "healthy",
+    average response time "245ms", 127 requests per minute, error rate "0.2%".
+    None of it was measured. An administrator opening the page to decide
+    whether the system was in trouble was reading numbers that never changed,
+    which is worse than showing nothing.
+
+    Everything below is either measured now or reported as unknown. Request
+    rate and error rate are deliberately absent rather than invented: nothing
+    in the application records them, and the place to read them is the
+    ``/health/metrics`` endpoint that Prometheus scrapes.
+    """
+    import os
+    import time
+
+    import psutil
+
+    from monitoring.health_checks import _database_is_reachable
+
+    status = {"checked_at": datetime.now(timezone.utc).isoformat()}
+
+    try:
+        status["database"] = {
+            "status": "healthy",
+            "response_time_ms": _database_is_reachable(),
+        }
+    except Exception as exc:
+        logging.error("System status: database unreachable: %s", exc, exc_info=True)
+        status["database"] = {"status": "unhealthy"}
+
+    # The cache is configured at startup; report the backend actually in use
+    # rather than asserting health of something that may be a no-op.
+    try:
+        cache_type = current_app.config.get("CACHE_TYPE", "unknown")
+        status["cache"] = {
+            "status": "healthy" if cache_type else "not_configured",
+            "backend": str(cache_type),
+        }
+    except Exception as exc:
+        logging.error("System status: cache check failed: %s", exc, exc_info=True)
+        status["cache"] = {"status": "unknown"}
+
+    # Background jobs need a broker. Without one, Celery is not running, and
+    # saying so is more useful than a green tick.
+    broker = os.environ.get("CELERY_BROKER_URL") or os.environ.get("REDIS_URL")
+    status["background_jobs"] = {
+        "status": "configured" if broker else "not_configured",
+        "broker": "redis" if broker else None,
     }
 
-    return render_template("admin/system_status.html", status=status_data)
+    # An integration is configured when its credentials are present. This is
+    # the same test services/optional.py applies before enabling a feature.
+    status["integrations"] = {
+        "azure_ai": "configured"
+        if os.environ.get("AZURE_OPENAI_ENDPOINT") and os.environ.get("AZURE_OPENAI_KEY")
+        else "not_configured",
+        "fabric": "configured" if os.environ.get("AZURE_FABRIC_ENDPOINT") else "not_configured",
+        "power_bi": "configured"
+        if all(
+            os.environ.get(name)
+            for name in ("POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET", "POWERBI_TENANT_ID")
+        )
+        else "not_configured",
+        "stripe": "configured" if os.environ.get("STRIPE_SECRET_KEY") else "not_configured",
+    }
+
+    try:
+        process = psutil.Process()
+        status["process"] = {
+            "pid": process.pid,
+            "uptime_seconds": round(time.time() - process.create_time()),
+            "memory_mb": round(process.memory_info().rss / (1024 * 1024), 1),
+            "cpu_percent": psutil.cpu_percent(interval=None),
+            "system_memory_percent": psutil.virtual_memory().percent,
+        }
+    except Exception as exc:
+        logging.error("System status: process metrics failed: %s", exc, exc_info=True)
+        status["process"] = {}
+
+    status["records"] = {
+        "users": User.query.filter_by(company_id=current_user.company_id).count(),
+        "projects": Project.query.filter_by(company_id=current_user.company_id).count(),
+    }
+
+    return status

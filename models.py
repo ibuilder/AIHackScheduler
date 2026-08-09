@@ -828,6 +828,13 @@ class Project(db.Model):
     data_date = Column(Date)
     azure_project_id = Column(String(100))
     fabric_dataset_id = Column(String(100))
+    # The construction template this project was created from, if any.
+    # blueprints/project_templates.py assigned this on every template-created
+    # project, but no column existed, so SQLAlchemy kept it as a transient
+    # instance attribute and dropped it at commit -- the provenance was never
+    # recorded -- while the "my templates" page raised AttributeError querying
+    # it. Nullable: projects created directly have no template.
+    template_used = Column(String(100), index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,
