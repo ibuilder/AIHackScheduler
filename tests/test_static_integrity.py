@@ -17,7 +17,28 @@ import ast
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "migrations", "tests"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "node_modules",
+    "migrations",
+    "tests",
+    # Build artefacts hold a verbatim copy of the source tree. `python -m build`
+    # writes build/lib/<package>/..., and scanning that reported every known gap
+    # a second time under a path KNOWN_MISSING does not name — so packaging the
+    # project and then running the suite failed it. The CI package job uses a
+    # separate checkout, so this only ever bit locally, which is worse.
+    "build",
+    "dist",
+    ".eggs",
+    ".tox",
+    "site-packages",
+    ".mypy_cache",
+    ".pytest_cache",
+    "htmlcov",
+}
 
 # The eleven helpers behind optimize_resource_allocation and
 # generate_project_insights. Implementing them means designing a resource
@@ -47,6 +68,45 @@ def _python_files():
             yield path
 
 
+def _own_nodes(cls: ast.ClassDef):
+    """Every node belonging to ``cls``, stopping at a nested class boundary.
+
+    ``ast.walk`` descends into nested classes, which charged an inner class's
+    ``self.helper()`` to the outer one — where ``helper`` is quite correctly not
+    defined. That reported a false missing method for any nested class.
+    """
+    for statement in cls.body:
+        if isinstance(statement, ast.ClassDef):
+            continue  # analysed separately, on its own terms
+        yield from ast.walk(statement)
+
+
+def _names_defined_by(cls: ast.ClassDef) -> set[str]:
+    """Everything ``self.x`` could legitimately resolve to on this class."""
+    defined = {n.name for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+    # Names bound at class scope. `handler = _module_level_function` and
+    # `run = staticmethod(...)` are ordinary ways to attach a callable, and
+    # counting only `def` reported them as missing.
+    for statement in cls.body:
+        if isinstance(statement, ast.Assign):
+            defined |= {t.id for t in statement.targets if isinstance(t, ast.Name)}
+        elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+            defined.add(statement.target.id)
+
+    # Attributes assigned on self anywhere in the class, which may be callables.
+    for node in _own_nodes(cls):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "self"
+            and isinstance(node.ctx, ast.Store)
+        ):
+            defined.add(node.attr)
+
+    return defined
+
+
 def _missing_methods(tree: ast.Module) -> dict[str, set[str]]:
     """Per class, the names called on ``self`` that the class never defines."""
     classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
@@ -63,25 +123,11 @@ def _missing_methods(tree: ast.Module) -> dict[str, set[str]]:
 
         defined = set()
         for owner in [name, *bases]:
-            owner_node = classes[owner]
-            defined |= {
-                n.name
-                for n in owner_node.body
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            # Attributes assigned on self, which may be callables.
-            for n in ast.walk(owner_node):
-                if (
-                    isinstance(n, ast.Attribute)
-                    and isinstance(n.value, ast.Name)
-                    and n.value.id == "self"
-                    and isinstance(n.ctx, ast.Store)
-                ):
-                    defined.add(n.attr)
+            defined |= _names_defined_by(classes[owner])
 
         called = {
             n.func.attr
-            for n in ast.walk(node)
+            for n in _own_nodes(node)
             if isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
             and isinstance(n.func.value, ast.Name)
@@ -118,9 +164,20 @@ def test_the_known_gaps_are_still_real():
     """If someone implements one, this fails and the entry must be removed —
     otherwise the allowlist quietly grows stale and starts hiding new breakage."""
     for (relative, class_name), allowed in KNOWN_MISSING.items():
-        tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"))
-        still_missing = _missing_methods(tree).get(class_name, set())
-        fixed = allowed - still_missing
+        path = REPO_ROOT / relative
+        assert path.is_file(), f"KNOWN_MISSING names {relative}, which no longer exists"
+
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        # Distinguish "the methods got written" from "the class went away".
+        # Inferring one from the absence of the other told the reader to go
+        # looking for eleven implementations that a rename had not produced.
+        classes = {n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+        assert class_name in classes, (
+            f"KNOWN_MISSING names {relative}::{class_name}, which no longer exists "
+            f"— it was renamed or removed, so update the entry rather than the code"
+        )
+
+        fixed = allowed - _missing_methods(tree).get(class_name, set())
         assert not fixed, (
             f"{relative}::{class_name} now defines {sorted(fixed)} — remove them from KNOWN_MISSING"
         )

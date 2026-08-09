@@ -30,7 +30,25 @@ KNOWN_MISSING = {
     "reports/project_report.html",
 }
 
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "tests"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "node_modules",
+    "tests",
+    # `python -m build` writes a verbatim copy of the source tree to build/lib,
+    # so without these a packaged working tree gets scanned twice. See the same
+    # list in tests/test_static_integrity.py, where it caused a real failure.
+    "build",
+    "dist",
+    ".eggs",
+    ".tox",
+    "site-packages",
+    ".mypy_cache",
+    ".pytest_cache",
+    "htmlcov",
+}
 
 
 def _referenced_templates() -> set[str]:
