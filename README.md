@@ -306,6 +306,33 @@ where the file's type codes were 1, 3 and 0: FS, SS and FF. The mapping now read
 `java.lang.Enum.name()`, and an unrecognised type is recorded in `schedule.warnings` rather
 than assumed.
 
+### And one only a real file could find
+
+That cross-check has a blind spot: it can only compare the two readers on MSPDI, because
+MSPDI is the only format both understand. `.mpp` is the one format in this project that no
+test can generate — nothing writes it but Microsoft Project — so `tests/data/example.mpp` is
+vendored (MIT, from the author of MPXJ; provenance in [tests/data/README.md](tests/data/README.md)).
+
+The first run of it read three 3-day tasks as **0.38 days each**. `Duration.getDuration()`
+returns a bare number in whatever unit the file used — days, here — and the code took it as
+hours and divided by hours-per-day, so every duration came out eight times too short.
+Relationship lag had the same bug. Neither could show up in the MSPDI comparison, because
+MSPDI genuinely does store hours.
+
+It parsed cleanly, warned about nothing, and failed nothing. Durations now go through MPXJ's
+`convertUnits`, and the test asserts what the file says rather than that a number came back:
+
+```
+name='example.mpp'  activities=3  relationships=2  warnings=0
+     1    3.00d  Task 1
+     2    3.00d  Task 2
+     3    3.00d  Task 3
+project_duration=9 working days, critical_path=['1', '2', '3']
+```
+
+The last line is the one that matters: a real Microsoft Project file, read from binary and
+scheduled through the CPM engine.
+
 ---
 
 ## Deployment
