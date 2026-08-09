@@ -116,11 +116,22 @@ def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
     import tempfile
     from pathlib import Path
 
-    mpxj = require("mpxj", feature="MS Project .mpp reading")
+    # Importing mpxj is what puts the bundled MPXJ jars on the classpath, so it
+    # has to happen before the JVM starts. There is no mpxj.initialize(): the
+    # package re-exports JPype's own namespace, and starting the JVM is
+    # jpype.startJVM(). This function had never been executed anywhere, and the
+    # first run of tests/test_mpp.py raised AttributeError on that call.
+    require("mpxj", feature="MS Project .mpp reading")
     jpype = require("jpype", feature="MS Project .mpp reading")
 
-    if not jpype.isJVMStarted():  # pragma: no cover - needs a JVM
-        mpxj.initialize()
+    if not jpype.isJVMStarted():
+        try:
+            jpype.startJVM()
+        except Exception as exc:  # no JVM on the machine, or an unusable one
+            raise IntegrationUnavailable(
+                "MS Project .mpp reading",
+                f"a Java runtime is required and could not be started ({exc})",
+            ) from exc
 
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / (filename or "schedule.mpp")
@@ -128,13 +139,21 @@ def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
 
         from net.sf.mpxj.reader import UniversalProjectReader  # noqa: E402
 
-        project = UniversalProjectReader().read(str(path))
+        # MPXJ raises a Java exception for a file it cannot parse rather than
+        # returning None, and a Java exception is not a ValueError — so without
+        # this the caller sees a JException escape from an import routine.
+        try:
+            project = UniversalProjectReader().read(str(path))
+        except jpype.JException as exc:
+            raise ImportError_(
+                f"MPXJ could not read this file as a Microsoft Project schedule: {exc.message()}"
+            ) from exc
         if project is None:
             raise ImportError_("MPXJ could not read this file as a Microsoft Project schedule")
         return _from_mpxj(project, filename)
 
 
-def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover - needs a JVM
+def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover - see test_mpp
     """Translate an MPXJ ProjectFile into the neutral model."""
     schedule = ExchangeSchedule(source_format="mpp")
     properties = project.getProjectProperties()
