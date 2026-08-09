@@ -8,7 +8,7 @@
 # build failed on a path buried thirty lines below the change. The dependencies
 # now live in a virtualenv at a fixed location instead, so the version appears
 # only where it is declared. tests/test_deployment.py enforces that.
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -43,7 +43,7 @@ RUN python -m venv "$VIRTUAL_ENV" \
     && pip install --no-cache-dir ".[postgres,async,integrations]"
 
 # Production stage
-FROM python:3.13-slim AS production
+FROM python:3.14-slim AS production
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
