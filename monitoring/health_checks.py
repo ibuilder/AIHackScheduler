@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime
 
 import psutil
@@ -10,8 +11,8 @@ from extensions import db
 health_bp = Blueprint("health", __name__)
 
 
-def _database_is_reachable() -> None:
-    """Run the cheapest possible query, raising if the database is unusable.
+def _database_is_reachable() -> float:
+    """Run the cheapest possible query and return how long it took, in ms.
 
     This used to be ``db.engine.execute("SELECT 1")``. That call was removed in
     SQLAlchemy 2.0 — the version this project pins — so it raised
@@ -23,9 +24,33 @@ def _database_is_reachable() -> None:
     deployment/azure-deploy.yml. A container built from this repository
     reported itself unhealthy for its entire life, and a Kubernetes pod would
     never have been sent traffic at all.
+
+    The connection comes from the same pool that serves requests, which is
+    deliberate — a pool with nothing left to give cannot serve traffic either,
+    so reporting it as unhealthy is correct. It does mean a saturated pool
+    makes this block for up to ``pool_timeout``, so the Kubernetes probes
+    declare an explicit ``timeoutSeconds`` and a ``failureThreshold`` above 1
+    rather than pulling a pod out of service on one slow check.
     """
+    started = time.perf_counter()
     with db.engine.connect() as connection:
         connection.execute(text("SELECT 1"))
+    return round((time.perf_counter() - started) * 1000, 3)
+
+
+def _unavailable(message: str, exc: Exception, **extra):
+    """Log the real cause, return one that discloses nothing.
+
+    These endpoints are unauthenticated — they have to be, since a container
+    runtime probing them holds no session. Echoing ``str(exc)`` therefore put
+    driver errors in front of anonymous callers, and a SQLAlchemy
+    ``OperationalError`` names the host, port, database and user it failed to
+    reach. Harmless while the check was broken and always produced the same
+    ``AttributeError`` text; a live infrastructure disclosure once the query
+    actually started running.
+    """
+    current_app.logger.error("%s: %s", message, exc, exc_info=True)
+    return {"error": message, **extra}
 
 
 @health_bp.route("/health")
@@ -45,9 +70,13 @@ def health_check():
         ), 200
 
     except Exception as e:
-        current_app.logger.error(f"Health check failed: {str(e)}")
         return jsonify(
-            {"status": "unhealthy", "timestamp": datetime.now().isoformat(), "error": str(e)}
+            _unavailable(
+                "Database health check failed",
+                e,
+                status="unhealthy",
+                timestamp=datetime.now().isoformat(),
+            )
         ), 503
 
 
@@ -65,10 +94,15 @@ def detailed_health_check():
 
         # Database check
         try:
-            _database_is_reachable()
-            health_data["checks"]["database"] = {"status": "healthy", "response_time_ms": 0}
+            elapsed_ms = _database_is_reachable()
+            health_data["checks"]["database"] = {
+                "status": "healthy",
+                "response_time_ms": elapsed_ms,
+            }
         except Exception as e:
-            health_data["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
+            health_data["checks"]["database"] = _unavailable(
+                "Database health check failed", e, status="unhealthy"
+            )
             health_data["status"] = "unhealthy"
 
         # System metrics
@@ -81,7 +115,9 @@ def detailed_health_check():
                 "load_average": os.getloadavg() if hasattr(os, "getloadavg") else None,
             }
         except Exception as e:
-            health_data["checks"]["system"] = {"status": "unhealthy", "error": str(e)}
+            health_data["checks"]["system"] = _unavailable(
+                "System metrics unavailable", e, status="unhealthy"
+            )
 
         # Redis check (if configured)
         try:
@@ -95,7 +131,10 @@ def detailed_health_check():
             else:
                 health_data["checks"]["redis"] = {"status": "not_configured"}
         except Exception as e:
-            health_data["checks"]["redis"] = {"status": "unhealthy", "error": str(e)}
+            # REDIS_URL may embed credentials, and a connection error quotes it.
+            health_data["checks"]["redis"] = _unavailable(
+                "Redis health check failed", e, status="unhealthy"
+            )
 
         # Power BI integration check
         try:
@@ -110,15 +149,21 @@ def detailed_health_check():
                 "status": "configured" if powerbi_configured else "not_configured"
             }
         except Exception as e:
-            health_data["checks"]["powerbi"] = {"status": "error", "error": str(e)}
+            health_data["checks"]["powerbi"] = _unavailable(
+                "Power BI configuration check failed", e, status="error"
+            )
 
         status_code = 200 if health_data["status"] == "healthy" else 503
         return jsonify(health_data), status_code
 
     except Exception as e:
-        current_app.logger.error(f"Detailed health check failed: {str(e)}")
         return jsonify(
-            {"status": "unhealthy", "timestamp": datetime.now().isoformat(), "error": str(e)}
+            _unavailable(
+                "Detailed health check failed",
+                e,
+                status="unhealthy",
+                timestamp=datetime.now().isoformat(),
+            )
         ), 503
 
 
@@ -132,9 +177,13 @@ def readiness_check():
         return jsonify({"status": "ready", "timestamp": datetime.now().isoformat()}), 200
 
     except Exception as e:
-        current_app.logger.error(f"Readiness check failed: {str(e)}")
         return jsonify(
-            {"status": "not_ready", "timestamp": datetime.now().isoformat(), "error": str(e)}
+            _unavailable(
+                "Readiness check failed",
+                e,
+                status="not_ready",
+                timestamp=datetime.now().isoformat(),
+            )
         ), 503
 
 
@@ -173,5 +222,5 @@ def metrics_endpoint():
         return "\n".join(metrics), 200, {"Content-Type": "text/plain"}
 
     except Exception as e:
-        current_app.logger.error(f"Metrics endpoint failed: {str(e)}")
-        return f"# Error generating metrics: {str(e)}", 500, {"Content-Type": "text/plain"}
+        current_app.logger.error("Metrics endpoint failed: %s", e, exc_info=True)
+        return "# Error generating metrics", 500, {"Content-Type": "text/plain"}

@@ -68,18 +68,31 @@ applications:
               cpu: 1.0
               memory: "2Gi"
             probes:
+              # Liveness deliberately does not touch the database: a pod that
+              # cannot reach Postgres should be taken out of service, not
+              # killed and restarted into the same outage.
               - type: Liveness
                 httpGet:
                   path: "/health/health/liveness"
                   port: 5000
                 initialDelaySeconds: 30
                 periodSeconds: 10
+                timeoutSeconds: 3
+                failureThreshold: 3
+              # Readiness checks the database, and takes a connection from the
+              # same pool that serves requests. That is intentional — an
+              # exhausted pool cannot serve traffic — but it means a load spike
+              # makes this slow rather than false. Without an explicit
+              # timeoutSeconds the default is 1s, and a single slow check would
+              # pull every pod out of service at once and deepen the spike.
               - type: Readiness
                 httpGet:
                   path: "/health/health/readiness"
                   port: 5000
                 initialDelaySeconds: 10
                 periodSeconds: 5
+                timeoutSeconds: 5
+                failureThreshold: 3
         scale:
           minReplicas: 2
           maxReplicas: 10
