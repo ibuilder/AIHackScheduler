@@ -39,7 +39,7 @@ dependencies = [
 postgres = ["psycopg2-binary>=2.9.10,<3"]
 
 # Background processing and shared cache.
-async = ["celery>=5.5.3,<6", "redis>=6.4.0,<7"]
+async = ["celery>=5.5.3,<6", "redis>=6.4.0,<9"]
 
 # Cloud and third-party integrations. All of these are optional; the platform
 # degrades to deterministic scheduling without them.
