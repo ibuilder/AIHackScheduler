@@ -19,9 +19,14 @@ Dockerfile text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# Binary, never converted.
+# Binary, never converted. `* text=auto` above leaves these to Git's own
+# content detection, which is a heuristic — and tests/data/example.mpp is a real
+# Microsoft Project file, an OLE2 compound document that must survive a checkout
+# byte for byte. tests/test_fixtures.py checks its hash on every Python version.
 *.png binary
 *.jpg binary
 *.ico binary
 *.db binary
 *.sqlite3 binary
+*.mpp binary
+*.mpx binary

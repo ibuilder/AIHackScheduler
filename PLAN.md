@@ -221,6 +221,14 @@ became Finish-Start. Both had been committed unexecuted because no machine here 
 `tests/test_mpp.py` closes that by exploiting MPXJ's ability to read MSPDI XML: the same file
 goes through MPXJ and through this project's own reader, and the two are compared.
 
+That comparison has a blind spot — it only reaches the formats both readers understand, which
+means MSPDI. So a genuine binary `.mpp` is vendored as well (MIT, from the author of MPXJ),
+and it immediately found a third defect the comparison could not: `Duration.getDuration()`
+returns a number in whatever unit the file used, and the code took it as hours regardless, so
+three 3-day tasks imported as 0.38 days each. Lag had the same bug. MSPDI stores hours, so
+the cross-check was blind to it by construction. Durations now go through MPXJ's
+`convertUnits`, and the file schedules end to end: 9 working days, all three tasks critical.
+
 **Migrations.** The schema changed six times during the rebuild with nothing to apply
 those changes to an existing database — `create_all` only ever adds missing tables. There
 are now two migrations: `0001_baseline` recreating the schema exactly as it stood at the

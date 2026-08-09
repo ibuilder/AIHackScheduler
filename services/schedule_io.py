@@ -106,21 +106,61 @@ def read_schedule_file(data: bytes, filename: str) -> ExchangeSchedule:
         raise ImportError_(str(exc)) from exc
 
 
-def _universal_project_reader():
-    """Return MPXJ's ``UniversalProjectReader`` class, whichever package holds it.
+def _mpxj_package() -> str:
+    """The Java package MPXJ lives in for the installed version.
 
-    MPXJ 14 renamed its Java package from ``net.sf.mpxj`` to ``org.mpxj``. That
-    is invisible to pip — the distribution is still ``mpxj`` — so an upgrade
-    past 13 left the import raising ``Java package 'net' not found`` at the one
-    moment a user tried to open a .mpp. The upper bound on the ``mpp`` extra was
-    holding that back, which is why widening it is a code change and not just a
-    version change.
+    MPXJ 14 renamed it from ``net.sf.mpxj`` to ``org.mpxj``. That is invisible
+    to pip — the distribution is still ``mpxj`` — so an upgrade past 13 left the
+    import raising ``Java package 'net' not found`` at the one moment a user
+    tried to open a .mpp. The upper bound on the ``mpp`` extra was holding that
+    back, which is why widening it was a code change and not just a version
+    change.
     """
-    try:  # MPXJ >= 14
-        from org.mpxj.reader import UniversalProjectReader  # noqa: E402
-    except ImportError:  # MPXJ 13
-        from net.sf.mpxj.reader import UniversalProjectReader  # noqa: E402
-    return UniversalProjectReader
+    import importlib
+
+    for package in ("org.mpxj", "net.sf.mpxj"):
+        try:
+            importlib.import_module(package)
+        except ImportError:
+            continue
+        return package
+    raise IntegrationUnavailable(
+        "MS Project .mpp reading",
+        "the MPXJ Java classes are not on the classpath",
+    )
+
+
+def _universal_project_reader():
+    """Return MPXJ's ``UniversalProjectReader`` class."""
+    import importlib
+
+    return importlib.import_module(f"{_mpxj_package()}.reader").UniversalProjectReader
+
+
+def _mpxj_time_unit():
+    """Return MPXJ's ``TimeUnit`` enum."""
+    import importlib
+
+    return importlib.import_module(_mpxj_package()).TimeUnit
+
+
+def _duration_in_days(duration, properties, time_unit) -> float:
+    """Convert an MPXJ duration to days.
+
+    ``Duration.getDuration()`` returns a bare number in whatever unit the file
+    happens to use — days, hours, weeks, months, elapsed variants. The first
+    version of this code took that number as hours unconditionally and divided
+    by hours-per-day, so a file written in days came out eight times too short:
+    a real .mpp with three 3-day tasks imported as three 0.38-day tasks. It
+    read cleanly, produced no warnings, and was wrong.
+
+    MPXJ's own ``convertUnits`` does the conversion using the project's
+    minutes-per-day and minutes-per-week, which is the only way to get weeks
+    and months right.
+    """
+    if duration is None:
+        return 0.0
+    return float(duration.convertUnits(time_unit.DAYS, properties).getDuration())
 
 
 def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
@@ -220,6 +260,7 @@ def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover 
     properties = project.getProjectProperties()
     schedule.name = str(properties.getName() or filename or "Imported Project")
 
+    time_unit = _mpxj_time_unit()
     minutes_per_day = properties.getMinutesPerDay()
     hours_per_day = float(minutes_per_day) / 60 if minutes_per_day else 8.0
     calendar = Calendar(id="1", name="Standard", hours_per_day=hours_per_day, is_default=True)
@@ -237,15 +278,14 @@ def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover 
         uid = task.getUniqueID()
         if uid is None or int(uid) == 0:
             continue
-        duration = task.getDuration()
-        hours = float(duration.getDuration()) if duration else 0.0
         is_milestone = bool(task.getMilestone())
+        days = _duration_in_days(task.getDuration(), properties, time_unit)
 
         schedule.activities.append(
             ExchangeActivity(
                 id=str(uid),
                 name=str(task.getName() or "Unnamed activity"),
-                duration=0.0 if is_milestone else hours / hours_per_day,
+                duration=0.0 if is_milestone else days,
                 kind=ActivityKind.FINISH_MILESTONE if is_milestone else ActivityKind.TASK,
                 calendar_id=calendar.id,
                 early_start=as_date(task.getStart()),
@@ -265,7 +305,9 @@ def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover 
             predecessor = str(relation.getPredecessorTask().getUniqueID())
             if predecessor not in known:
                 continue
-            lag = relation.getLag()
+            # Lag is a Duration too, carrying its own units — a "2 days" lag
+            # read as hours and divided by hours-per-day became 0.25 days.
+            lag_days = _duration_in_days(relation.getLag(), properties, time_unit)
             raw_type = relation.getType()
             relation_type = _mpxj_relation_type(raw_type)
             if relation_type is None:
@@ -279,7 +321,7 @@ def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover 
                     predecessor_id=predecessor,
                     successor_id=successor,
                     type=relation_type,
-                    lag=(float(lag.getDuration()) if lag else 0.0) / hours_per_day,
+                    lag=lag_days,
                 )
             )
 
