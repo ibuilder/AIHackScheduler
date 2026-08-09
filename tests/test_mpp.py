@@ -146,10 +146,19 @@ def test_a_real_mpp_schedules_end_to_end(real_mpp):
     activities, relationships = real_mpp.to_cpm()
     result = calculate_cpm(activities, relationships)
 
-    assert result.duration > 0, "a real schedule computed a zero-length project"
-    critical = [a for a in result.activities.values() if a.is_critical]
-    assert critical, "no critical path in a real schedule"
     print(
-        f"\n  project duration={result.duration} working days, "
-        f"{len(critical)}/{len(activities)} activities critical"
+        f"\n  project_duration={result.project_duration} working days, "
+        f"critical_path={result.critical_path}"
     )
+    assert result.project_duration > 0, "a real schedule computed a zero-length project"
+    assert result.critical_path, "no critical path in a real schedule"
+
+
+def test_durations_are_read_in_the_units_the_file_uses(real_mpp):
+    """MPXJ returns a duration as a bare number in whatever unit the file used.
+    Taking that as hours and dividing by hours-per-day made every task in this
+    file eight times too short — three 3-day tasks imported as 0.38 days —
+    with no warning, and nothing else failing. The MSPDI cross-check could not
+    catch it, because MSPDI really does store hours."""
+    durations = {a.name: a.duration for a in real_mpp.activities}
+    assert durations == {"Task 1": 3.0, "Task 2": 3.0, "Task 3": 3.0}, durations
