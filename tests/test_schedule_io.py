@@ -4,6 +4,7 @@ import io
 
 import pytest
 
+from core.cpm import RelationType
 from extensions import db
 from models import Project, Task, TaskDependency
 from services.schedule_io import (
@@ -353,3 +354,77 @@ def test_export_is_refused_for_another_tenants_project(signed_in, app_context):
 
     response = client.get(f"/api/schedule/projects/{rival_project.id}/export/xer")
     assert response.status_code == 404
+
+
+# ── the MPXJ relationship type mapping ───────────────────────────────────
+#
+# This ran for the first time in CI and disagreed with MPXJ on two of three
+# links: the lookup was keyed on the Java enum's toString(), which MPXJ
+# overrides to a display form, and a `.get(..., FS)` default swallowed every
+# miss. Every relationship in every .mpp import silently became Finish-Start.
+#
+# These tests use stubs, so the mapping is checkable without a JVM — which is
+# the reason the bug survived to begin with.
+
+
+class _JavaEnumStub:
+    """Mimics java.lang.Enum: name() is the identifier, toString() is display."""
+
+    def __init__(self, identifier, display):
+        self._identifier = identifier
+        self._display = display
+
+    def name(self):
+        return self._identifier
+
+    def __str__(self):
+        return self._display
+
+
+@pytest.mark.parametrize(
+    ("identifier", "display", "expected"),
+    [
+        ("FINISH_START", "Finish-Start", RelationType.FS),
+        ("START_START", "Start-Start", RelationType.SS),
+        ("FINISH_FINISH", "Finish-Finish", RelationType.FF),
+        ("START_FINISH", "Start-Finish", RelationType.SF),
+    ],
+)
+def test_the_java_enum_name_decides_the_relationship_type(identifier, display, expected):
+    from services.schedule_io import _mpxj_relation_type
+
+    assert _mpxj_relation_type(_JavaEnumStub(identifier, display)) is expected
+
+
+@pytest.mark.parametrize(
+    ("display", "expected"),
+    [
+        ("Finish-Finish", RelationType.FF),
+        ("Start-Start", RelationType.SS),
+        ("Start Finish", RelationType.SF),
+        ("FF", RelationType.FF),
+        ("ss", RelationType.SS),
+    ],
+)
+def test_the_display_form_is_accepted_when_there_is_no_name(display, expected):
+    """A build of MPXJ that exposes only toString() must still map correctly,
+    rather than falling back to Finish-Start."""
+
+    class _DisplayOnly:
+        def __str__(self):
+            return display
+
+    from services.schedule_io import _mpxj_relation_type
+
+    assert _mpxj_relation_type(_DisplayOnly()) is expected
+
+
+def test_an_unrecognised_relationship_type_is_reported_not_assumed():
+    from services.schedule_io import _mpxj_relation_type
+
+    class _Nonsense:
+        def __str__(self):
+            return "Sideways-Sideways"
+
+    assert _mpxj_relation_type(_Nonsense()) is None
+    assert _mpxj_relation_type(None) is None

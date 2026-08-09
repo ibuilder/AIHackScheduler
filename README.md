@@ -263,6 +263,49 @@ Bounds alone would just freeze the project, so Dependabot proposes raising them 
 Upgrades then arrive as pull requests that run the full suite, rather than landing silently
 in the next build.
 
+Its first run made the point better than the argument does. Seven proposals: the GitHub
+Actions were three majors behind, the base image was three Python releases behind, and
+`redis`, `openai`, `stripe` and `mpxj` had all published majors the bounds excluded. Two of
+those proposals found real defects rather than needing them — see *A bump that found a bug*
+below.
+
+A green build has to mean something, so two things exist to stop it going hollow:
+
+- **The optional extras are installed and imported.** None of them appear in
+  `requirements.txt`, so for a while a proposal widening the `openai` bound passed all eight
+  jobs without one line of the affected code being imported. The `extras` job installs
+  `.[postgres,async,integrations,mpp]`, imports every optional package and boots the
+  application with them present.
+- **The image ships a Python the tests run.** `tests/test_deployment.py` fails if the
+  Dockerfile's base image is not in the CI matrix, so production is never the first place an
+  incompatibility appears.
+
+### A bump that found a bug
+
+The base image bump failed, and the failure was worth more than the upgrade. The Dockerfile
+named its Python version three times — twice on `FROM` lines and once, thirty lines below, in
+`COPY --from=builder /usr/local/lib/python3.11/site-packages`. Nothing recognises a `COPY`
+path as a version declaration, so *any* Python bump broke the build. Dependencies now install
+into a virtualenv at `/opt/venv` and the version appears only where it is declared.
+
+The `mpp` extra exposed something worse. `read_mpp` and `_from_mpxj` were written against the
+MPXJ API and committed without ever being executed — MPXJ is a Java library reached through
+JPype, and no machine here had a JVM, so `_from_mpxj` even carried a `pragma: no cover`
+admitting it. The first run raised `AttributeError`: `mpxj.initialize()` does not exist.
+
+Underneath that was a quieter one. The relationship type was looked up on
+`str(relation.getType())` with a `.get(..., FS)` default. MPXJ overrides `toString()` to a
+display form, so the lookup missed every time and the default absorbed it: **every
+relationship in every `.mpp` import silently became Finish-Start**, whatever the file said.
+
+What caught it is that MPXJ's `UniversalProjectReader` reads MSPDI XML as well as binary
+`.mpp`. `tests/test_mpp.py` puts one file through both MPXJ and this project's own
+pure-Python reader and compares activities, durations and links — so no `.mpp` is needed, and
+a disagreement means one of the two readers is wrong. It reported three Finish-Start links
+where the file's type codes were 1, 3 and 0: FS, SS and FF. The mapping now reads
+`java.lang.Enum.name()`, and an unrecognised type is recorded in `schedule.warnings` rather
+than assumed.
+
 ---
 
 ## Deployment

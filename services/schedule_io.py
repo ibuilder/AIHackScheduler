@@ -116,11 +116,22 @@ def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
     import tempfile
     from pathlib import Path
 
-    mpxj = require("mpxj", feature="MS Project .mpp reading")
+    # Importing mpxj is what puts the bundled MPXJ jars on the classpath, so it
+    # has to happen before the JVM starts. There is no mpxj.initialize(): the
+    # package re-exports JPype's own namespace, and starting the JVM is
+    # jpype.startJVM(). This function had never been executed anywhere, and the
+    # first run of tests/test_mpp.py raised AttributeError on that call.
+    require("mpxj", feature="MS Project .mpp reading")
     jpype = require("jpype", feature="MS Project .mpp reading")
 
-    if not jpype.isJVMStarted():  # pragma: no cover - needs a JVM
-        mpxj.initialize()
+    if not jpype.isJVMStarted():
+        try:
+            jpype.startJVM()
+        except Exception as exc:  # no JVM on the machine, or an unusable one
+            raise IntegrationUnavailable(
+                "MS Project .mpp reading",
+                f"a Java runtime is required and could not be started ({exc})",
+            ) from exc
 
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / (filename or "schedule.mpp")
@@ -128,13 +139,65 @@ def read_mpp(data: bytes, filename: str) -> ExchangeSchedule:
 
         from net.sf.mpxj.reader import UniversalProjectReader  # noqa: E402
 
-        project = UniversalProjectReader().read(str(path))
+        # MPXJ raises a Java exception for a file it cannot parse rather than
+        # returning None, and a Java exception is not a ValueError — so without
+        # this the caller sees a JException escape from an import routine.
+        try:
+            project = UniversalProjectReader().read(str(path))
+        except jpype.JException as exc:
+            raise ImportError_(
+                f"MPXJ could not read this file as a Microsoft Project schedule: {exc.message()}"
+            ) from exc
         if project is None:
             raise ImportError_("MPXJ could not read this file as a Microsoft Project schedule")
         return _from_mpxj(project, filename)
 
 
-def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover - needs a JVM
+# Keyed on the Java enum's name(), which java.lang.Enum guarantees and MPXJ
+# does not override. MPXJ *does* override toString() to a display form
+# ("Finish-Start"), and the first version of this code looked up toString()
+# against these keys with a `.get(..., FS)` default — so every relationship in
+# every imported file silently became Finish-Start, including the ones that
+# were not. The normalisation below also accepts the display form and the two
+# letter abbreviation, and an unrecognised value is recorded as a warning
+# rather than quietly assumed.
+_MPXJ_LINK_TYPES = {
+    "FINISH_START": RelationType.FS,
+    "START_START": RelationType.SS,
+    "FINISH_FINISH": RelationType.FF,
+    "START_FINISH": RelationType.SF,
+}
+_MPXJ_LINK_ABBREVIATIONS = {
+    "FS": RelationType.FS,
+    "SS": RelationType.SS,
+    "FF": RelationType.FF,
+    "SF": RelationType.SF,
+}
+
+
+def _mpxj_relation_type(raw) -> RelationType | None:
+    """Map an MPXJ RelationType to ours, or ``None`` if it is unrecognised."""
+    if raw is None:
+        return None
+
+    candidates = []
+    name = getattr(raw, "name", None)
+    if callable(name):  # java.lang.Enum.name()
+        candidates.append(str(name()))
+    elif isinstance(name, str):  # a Python enum, or a stub in the tests
+        candidates.append(name)
+    candidates.append(str(raw))
+
+    for candidate in candidates:
+        key = candidate.strip().upper().replace("-", "_").replace(" ", "_")
+        if key in _MPXJ_LINK_TYPES:
+            return _MPXJ_LINK_TYPES[key]
+        if key in _MPXJ_LINK_ABBREVIATIONS:
+            return _MPXJ_LINK_ABBREVIATIONS[key]
+    return None
+
+
+def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover - see test_mpp
     """Translate an MPXJ ProjectFile into the neutral model."""
     schedule = ExchangeSchedule(source_format="mpp")
     properties = project.getProjectProperties()
@@ -145,13 +208,6 @@ def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover 
     calendar = Calendar(id="1", name="Standard", hours_per_day=hours_per_day, is_default=True)
     schedule.calendars.append(calendar)
     schedule.default_calendar_id = calendar.id
-
-    link_types = {
-        "FINISH_START": RelationType.FS,
-        "START_START": RelationType.SS,
-        "FINISH_FINISH": RelationType.FF,
-        "START_FINISH": RelationType.SF,
-    }
 
     def as_date(value):
         return (
@@ -193,11 +249,19 @@ def _from_mpxj(project, filename: str) -> ExchangeSchedule:  # pragma: no cover 
             if predecessor not in known:
                 continue
             lag = relation.getLag()
+            raw_type = relation.getType()
+            relation_type = _mpxj_relation_type(raw_type)
+            if relation_type is None:
+                relation_type = RelationType.FS
+                schedule.warnings.append(
+                    f"Unrecognised relationship type {str(raw_type)!r} between "
+                    f"{predecessor} and {successor}; treated as Finish-Start"
+                )
             schedule.relationships.append(
                 ExchangeRelationship(
                     predecessor_id=predecessor,
                     successor_id=successor,
-                    type=link_types.get(str(relation.getType()), RelationType.FS),
+                    type=relation_type,
                     lag=(float(lag.getDuration()) if lag else 0.0) / hours_per_day,
                 )
             )

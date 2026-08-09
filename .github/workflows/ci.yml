@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v7
@@ -34,10 +34,60 @@ jobs:
           # Bounded for the same reason as ruff: pytest 9 changed plugin hook
           # handling, and an unbounded install would apply that on its own
           # schedule to a build nobody touched.
-          pip install "pytest>=8,<10" "pytest-cov>=5,<8"
+          pip install "pytest>=8,<10" "pytest-cov>=5,<8" "pyyaml>=6.0,<8"
 
       - name: Run tests
         run: pytest --cov=core --cov=services --cov-report=term-missing
+
+  extras:
+    name: Optional extras install and import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      # None of the optional packages appear in requirements.txt, so every
+      # other job installs none of them. That made the bounds on redis, openai,
+      # stripe and mpxj unfalsifiable: a dependency update widening one of them
+      # passed all eight jobs without a single line of the affected code being
+      # imported. This job is what gives those bounds evidence.
+      - name: Install every extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[postgres,async,integrations,mpp]"
+          pip install "pytest>=8,<10" "pyyaml>=6.0,<8"
+
+      - name: The optional integrations import and the app still boots
+        env:
+          FLASK_ENV: development
+          SESSION_SECRET: ci-extras-secret
+        run: |
+          python - <<'EOF'
+          import importlib
+
+          # Imported through services.optional at runtime, never at module
+          # scope — so nothing else would notice a breaking major.
+          for name in ("openai", "stripe", "redis", "celery", "openpyxl",
+                       "jwt", "oauthlib", "flask_dance", "psycopg2",
+                       "azure.identity", "azure.storage.blob"):
+              importlib.import_module(name)
+              print(f"  {name} imports")
+
+          from app import create_app
+          create_app().test_client().get("/health/health")
+          print("app boots with every extra installed")
+          EOF
+
+      # The MPXJ bridge needs a JVM, which is why it had never run anywhere.
+      # GitHub's runners have one.
+      - name: Exercise the MPXJ bridge
+        run: |
+          java -version
+          pytest tests/test_mpp.py -m mpp -v
 
   lint:
     name: Lint
