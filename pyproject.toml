@@ -73,7 +73,7 @@ dev = [
     "pyyaml>=6.0,<8",
     # Pinned: a formatter that floats breaks CI on its own release schedule,
     # with no change to this codebase. Bump deliberately.
-    "ruff==0.16.2",
+    "ruff==0.16.3",
 ]
 
 [tool.setuptools]
